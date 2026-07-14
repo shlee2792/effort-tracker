@@ -188,7 +188,6 @@
   .stat-card{background:var(--panel-alt);border:none;border-radius:14px;padding:15px 18px;}
   .stat-card .stat-label{font-size:11.5px;color:var(--ink-soft);font-weight:600;margin-bottom:6px;}
   .stat-card .stat-value{font-family:var(--sans);font-variant-numeric:tabular-nums;font-size:25px;font-weight:700;letter-spacing:-0.02em;color:var(--ink);}
-  .stat-card .stat-value.stat-value-long{font-size:19px;}
   .stat-card .stat-value span{font-size:12px;color:var(--ink-faint);font-weight:600;margin-left:3px;letter-spacing:0;}
 
   canvas{max-width:100%;}
@@ -334,7 +333,7 @@
         </div>
         <div class="stat-card" style="flex:1;">
           <div class="stat-label">필터된 총 소요시간</div>
-          <div class="stat-value stat-value-long" id="logSumStat">0초</div>
+          <div class="stat-value" id="logSumStat">0<span>시간</span></div>
         </div>
       </div>
       <div class="table-wrap">
@@ -373,7 +372,7 @@
     </div>
 
     <div class="grid-3" style="margin-bottom:16px;">
-      <div class="stat-card"><div class="stat-label">총 공수</div><div class="stat-value stat-value-long" id="statTotal">0초</div></div>
+      <div class="stat-card"><div class="stat-label">총 공수</div><div class="stat-value" id="statTotal">0<span>시간</span></div></div>
       <div class="stat-card"><div class="stat-label">총 기록 건수</div><div class="stat-value" id="statCount">0<span>건</span></div></div>
       <div class="stat-card"><div class="stat-label">건당 평균</div><div class="stat-value" id="statAvg">0<span>분</span></div></div>
     </div>
@@ -802,11 +801,13 @@
       mid: mid, sub: sub, group: info.group, stage: stage,
       startTs: Date.now(), accumMs: 0, status: 'running'
     };
-    TIMERS = TIMERS.concat([t]);
-    renderActiveTimers();
-
     setSyncing(true);
-    sSet('active-timers', TIMERS).finally(function(){ setSyncing(false); });
+    var latest = await sGet('active-timers', TIMERS);
+    latest.push(t);
+    await sSet('active-timers', latest);
+    TIMERS = latest;
+    setSyncing(false);
+    renderActiveTimers();
   }
 
   function elapsedMs(t){
@@ -857,8 +858,10 @@
   }
 
   async function toggleTimer(id){
-    var t = TIMERS.find(function(x){return x.id===id;});
-    if(!t) return;
+    setSyncing(true);
+    var latest = await sGet('active-timers', TIMERS);
+    var t = latest.find(function(x){return x.id===id;});
+    if(!t){ setSyncing(false); return; }
     if(t.status==='running'){
       t.accumMs = t.accumMs + (Date.now() - t.startTs);
       t.status = 'paused';
@@ -866,10 +869,10 @@
       t.startTs = Date.now();
       t.status = 'running';
     }
+    await sSet('active-timers', latest);
+    TIMERS = latest;
+    setSyncing(false);
     renderActiveTimers();
-
-    setSyncing(true);
-    sSet('active-timers', TIMERS).finally(function(){ setSyncing(false); });
   }
 
   var pendingStopId = null;
@@ -907,9 +910,17 @@
       minutes: minutes, date: date, note: note, source: 'timer'
     };
 
-    // 화면은 즉시 갱신 (낙관적 업데이트) — 저장은 뒤에서 병렬로 진행
-    LOGS = LOGS.concat([entry]);
-    TIMERS = TIMERS.filter(function(x){return x.id!==t.id;});
+    setSyncing(true);
+    var latestLogs = await sGet('work-logs', LOGS);
+    latestLogs.push(entry);
+    await sSet('work-logs', latestLogs);
+    LOGS = latestLogs;
+
+    var latestTimers = await sGet('active-timers', TIMERS);
+    latestTimers = latestTimers.filter(function(x){return x.id!==t.id;});
+    await sSet('active-timers', latestTimers);
+    TIMERS = latestTimers;
+    setSyncing(false);
 
     document.getElementById('stopModal').classList.remove('show');
     pendingStopId = null;
@@ -917,21 +928,17 @@
     refreshFilterOptions();
     renderLogTable();
     renderDashboard();
-
-    setSyncing(true);
-    Promise.all([
-      sSet('work-logs', LOGS),
-      sSet('active-timers', TIMERS)
-    ]).finally(function(){ setSyncing(false); });
   }
 
   async function cancelTimer(id){
-    showConfirm('타이머 취소', '저장하지 않고 이 타이머를 삭제할까요? 경과 시간이 사라집니다.', function(){
-      TIMERS = TIMERS.filter(function(x){return x.id!==id;});
-      renderActiveTimers();
-
+    showConfirm('타이머 취소', '저장하지 않고 이 타이머를 삭제할까요? 경과 시간이 사라집니다.', async function(){
       setSyncing(true);
-      sSet('active-timers', TIMERS).finally(function(){ setSyncing(false); });
+      var latest = await sGet('active-timers', TIMERS);
+      latest = latest.filter(function(x){return x.id!==id;});
+      await sSet('active-timers', latest);
+      TIMERS = latest;
+      setSyncing(false);
+      renderActiveTimers();
     });
   }
 
@@ -984,7 +991,7 @@
       tbody.appendChild(tr);
     });
     document.getElementById('logCountStat').innerHTML = rows.length + '<span>건</span>';
-    document.getElementById('logSumStat').textContent = fmtDuration(sumMin);
+    document.getElementById('logSumStat').innerHTML = fmtHoursFromMinutes(sumMin) + '<span>시간</span>';
   }
 
   function escapeHtml(s){
@@ -1036,7 +1043,7 @@
     var rows = filteredLogsFor('dash');
 
     var totalMin = rows.reduce(function(s,l){return s+l.minutes;},0);
-    document.getElementById('statTotal').textContent = fmtDuration(totalMin);
+    document.getElementById('statTotal').innerHTML = fmtHoursFromMinutes(totalMin)+'<span>시간</span>';
     document.getElementById('statCount').innerHTML = rows.length+'<span>건</span>';
     document.getElementById('statAvg').innerHTML = (rows.length? Math.round(totalMin/rows.length):0)+'<span>분</span>';
 
