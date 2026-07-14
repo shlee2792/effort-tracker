@@ -98,6 +98,7 @@
   }
   .field{margin-bottom:12px;}
   .field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .field-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
   .hint{font-size:11px;color:var(--ink-faint);margin-top:4px;}
   textarea{resize:vertical;min-height:52px;}
 
@@ -473,14 +474,18 @@
   <div class="modal-box">
     <h3>타이머 종료</h3>
     <p class="modal-desc" id="stopModalDesc"></p>
-    <div class="field field-row">
+    <div class="field field-row-3">
       <div>
-        <label>소요시간 (시간)</label>
+        <label>시간</label>
         <input type="number" id="stopHour" min="0" value="0" />
       </div>
       <div>
-        <label>소요시간 (분)</label>
+        <label>분</label>
         <input type="number" id="stopMin" min="0" max="59" value="0" />
+      </div>
+      <div>
+        <label>초</label>
+        <input type="number" id="stopSec" min="0" max="59" value="0" />
       </div>
     </div>
     <div class="field">
@@ -595,11 +600,15 @@
     return (Math.round(h*10)/10).toString();
   }
   function fmtDuration(min){
-    min = Math.round(min);
-    var h = Math.floor(min/60), m = min%60;
-    if(h<=0) return m+'분';
-    if(m<=0) return h+'시간';
-    return h+'시간 '+m+'분';
+    var totalSec = Math.round(min*60);
+    var h = Math.floor(totalSec/3600);
+    var m = Math.floor((totalSec%3600)/60);
+    var s = totalSec%60;
+    var parts = [];
+    if(h>0) parts.push(h+'시간');
+    if(m>0) parts.push(m+'분');
+    if(s>0 || parts.length===0) parts.push(s+'초');
+    return parts.join(' ');
   }
   function fmtClock(ms){
     var totalSec = Math.floor(ms/1000);
@@ -851,9 +860,10 @@
     if(!t) return;
     pendingStopId = id;
     var ms = elapsedMs(t);
-    var totalMin = Math.round(ms/60000);
-    document.getElementById('stopHour').value = Math.floor(totalMin/60);
-    document.getElementById('stopMin').value = totalMin%60;
+    var totalSec = Math.round(ms/1000);
+    document.getElementById('stopHour').value = Math.floor(totalSec/3600);
+    document.getElementById('stopMin').value = Math.floor((totalSec%3600)/60);
+    document.getElementById('stopSec').value = totalSec%60;
     document.getElementById('stopDate').value = todayStr();
     document.getElementById('stopNote').value = '';
     document.getElementById('stopModalDesc').textContent =
@@ -866,8 +876,10 @@
     if(!t) { document.getElementById('stopModal').classList.remove('show'); return; }
     var h = parseInt(document.getElementById('stopHour').value||'0',10);
     var m = parseInt(document.getElementById('stopMin').value||'0',10);
-    var minutes = h*60+m;
-    if(minutes<=0){ alert('소요시간은 0보다 커야 합니다.'); return; }
+    var s = parseInt(document.getElementById('stopSec').value||'0',10);
+    var totalSeconds = h*3600+m*60+s;
+    if(totalSeconds<=0){ alert('소요시간은 0보다 커야 합니다.'); return; }
+    var minutes = Math.round(totalSeconds/60*100)/100;
     var date = document.getElementById('stopDate').value || todayStr();
     var note = document.getElementById('stopNote').value || '';
 
@@ -1005,6 +1017,8 @@
   }
 
   function renderDashboard(){
+    var dashPanel = document.getElementById('tab-dash');
+    if(!dashPanel || !dashPanel.classList.contains('active')) return; // 숨겨진 상태에서 그리면 차트가 0 크기로 깨짐
     if(typeof Chart === 'undefined') return;
     var rows = filteredLogsFor('dash');
 
