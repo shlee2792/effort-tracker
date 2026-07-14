@@ -361,6 +361,10 @@
       <div class="stat-card"><div class="stat-label">건당 평균</div><div class="stat-value" id="statAvg">0<span>분</span></div></div>
     </div>
 
+    <p class="small-note hidden" id="chartLibWarning" style="color:var(--danger);margin-bottom:14px;">
+      ※ 그래프 라이브러리(Chart.js)를 불러오지 못해 아래 차트는 표시되지 않습니다. 네트워크/방화벽에서 cdnjs.cloudflare.com 접속이 막혀있지 않은지 확인해주세요. 위 숫자(총 공수 등)는 정상 집계된 값입니다.
+    </p>
+
     <div class="grid-2">
       <div class="card">
         <h2>인당 총공수</h2>
@@ -655,6 +659,7 @@
     renderVehicleSettingsList();
 
     renderActiveTimers();
+    refreshFilterOptions();
     renderLogTable();
     renderDashboard();
 
@@ -1019,13 +1024,18 @@
   function renderDashboard(){
     var dashPanel = document.getElementById('tab-dash');
     if(!dashPanel || !dashPanel.classList.contains('active')) return; // 숨겨진 상태에서 그리면 차트가 0 크기로 깨짐
-    if(typeof Chart === 'undefined') return;
     var rows = filteredLogsFor('dash');
 
     var totalMin = rows.reduce(function(s,l){return s+l.minutes;},0);
     document.getElementById('statTotal').innerHTML = fmtHoursFromMinutes(totalMin)+'<span>시간</span>';
     document.getElementById('statCount').innerHTML = rows.length+'<span>건</span>';
     document.getElementById('statAvg').innerHTML = (rows.length? Math.round(totalMin/rows.length):0)+'<span>분</span>';
+
+    if(typeof Chart === 'undefined'){
+      document.getElementById('chartLibWarning').classList.remove('hidden');
+      return; // 차트 라이브러리 로드 실패 시 숫자만 보여주고 차트는 생략
+    }
+    document.getElementById('chartLibWarning').classList.add('hidden');
 
     // 인당 총공수
     var byMember = {};
