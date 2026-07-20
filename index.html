@@ -808,6 +808,9 @@
   async function startTimer(){
     if(TIMER_BUSY) return;
     TIMER_BUSY = true;
+    var startBtn = document.getElementById('startTimerBtn');
+    startBtn.disabled = true;
+    startBtn.textContent = '시작 중…';
     try{
       var ctx = currentContext();
       var mid = document.getElementById('timerMid').value;
@@ -822,12 +825,25 @@
       };
       setSyncing(true);
       var latest = await sGet('active-timers', TIMERS);
+      // 같은 인원·차종·작업의 타이머가 이미 있으면 연타/실수로 보고 새로 만들지 않는다
+      var dup = latest.find(function(x){
+        return x.member===t.member && x.vehicle===t.vehicle && x.mid===t.mid &&
+               x.sub===t.sub && (x.stage||null)===(t.stage||null);
+      });
+      if(dup){
+        TIMERS = latest;
+        renderActiveTimers();
+        alert('같은 항목의 타이머가 이미 실행 중입니다.\n기존 타이머를 이어서 사용하거나, 취소한 뒤 다시 시작하세요.');
+        return;
+      }
       latest.push(t);
       await sSet('active-timers', latest);
       TIMERS = latest;
       renderActiveTimers();
     } finally {
       TIMER_BUSY = false;
+      startBtn.disabled = false;
+      startBtn.textContent = '▶ 시작';
       setSyncing(false);
     }
   }
