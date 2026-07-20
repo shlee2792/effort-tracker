@@ -175,6 +175,7 @@
   }
   .tag-verify{background:var(--accent-soft);color:var(--accent-dark);}
   .tag-env{background:#F4EAFC;color:#8944C4;}
+  .tag-pm{background:#E3F2EC;color:#1E7A55;}
   .tag-fail{background:var(--warn-soft);color:#B25E00;}
   .time-cell{font-family:var(--sans);font-variant-numeric:tabular-nums;font-weight:600;}
   .table-wrap{max-height:520px;overflow:auto;border:1px solid var(--line);border-radius:14px;}
@@ -343,6 +344,7 @@
             <option value="all">전체</option>
             <option value="verify">검증 수행</option>
             <option value="env">환경 설정</option>
+            <option value="pm">PM 업무</option>
           </select>
         </div>
       </div>
@@ -640,11 +642,12 @@
     { mid: "A-3", group: "verify", subs: ["Interface-IS","Interface-OS","Interface-LIN","DFAS","ES95486","J1979-2","J1979-3","DIAG-DTC","DrivingCycle","TmDiag"] },
     { mid: "A-4", group: "verify", subs: ["DrvDmdTq","StpAsstTq","VehDmdTq","MotTqCmd","AclTq","BrkTq","CstTq","CrpTq","TqDist","RgnTq"] },
     { mid: "A-5", group: "verify", subs: ["ADRobo","HDP","SLM","ACC","IO-Pedal","NI-Pedal","DriveMode","VEMO-AWD","SCU","DMIC","EGM-DgClth","EGM-OPP","DTCH","AuxBatMngt","MainBatMngt","VehSlope","VehLoad","VehSpeed","DTE","Indicate","DIAG-REC","FAC","DYNO","VIRDRV","TmRfg","FailSafe"] },
-    { mid: "A-6", group: "verify", subs: ["MultiFaleSafe","NewMultiFail","MinMax","TransSideEffect","SysIntv","FailSafeNoise"] }
+    { mid: "A-6", group: "verify", subs: ["MultiFaleSafe","NewMultiFail","MinMax","TransSideEffect","SysIntv","FailSafeNoise"] },
+    { mid: "PM 업무", group: "pm", subs: ["산출물 정리","체크시트 작성"] }
   ];
   var VERIFY_MIDS = CATEGORY_TREE.filter(function(c){return c.group==='verify';}).map(function(c){return c.mid;});
-  var STAGES = ["검증 수행","Fail 분석","이슈리포트 작성","산출물 정리"];
-  var NORMAL_STAGES = ["검증 수행","산출물 정리"];
+  var STAGES = ["검증 수행","Fail 분석","이슈리포트 작성"];
+  var NORMAL_STAGES = ["검증 수행"];
   var ISSUE_STAGES = ["Fail 분석","이슈리포트 작성"];
 
   function midInfo(mid){
@@ -1303,7 +1306,9 @@
     rows.forEach(function(l){
       sumMin += l.minutes;
       var tr = document.createElement('tr');
-      var groupTag = l.group==='verify' ? '<span class="tag tag-verify">검증수행</span>' : '<span class="tag tag-env">환경설정</span>';
+      var groupTag = l.group==='verify' ? '<span class="tag tag-verify">검증수행</span>'
+                   : l.group==='pm' ? '<span class="tag tag-pm">PM업무</span>'
+                   : '<span class="tag tag-env">환경설정</span>';
       var subTag = (l.sub==='Fail 분석' || l.sub==='이슈리포트 작성') ? '<span class="tag tag-fail" style="margin-left:4px;">이슈대응</span>' : '';
       tr.innerHTML =
         '<td>'+l.date+'</td>'+
@@ -1447,7 +1452,7 @@
     destroyChart('normalIssue');
     charts.normalIssue = new Chart(document.getElementById('chartNormalVsIssue'), {
       type:'bar',
-      data:{ labels:['정상 진행 (검증수행·산출물정리)','이슈 대응 (Fail분석·이슈리포트)'],
+      data:{ labels:['정상 진행 (검증 수행)','이슈 대응 (Fail분석·이슈리포트)'],
         datasets:[{ data:[Math.round(normalSum/6)/10, Math.round(issueSum/6)/10], backgroundColor:['#0071E3','#FF9F0A'], borderRadius:8 }] },
       options: baseChartOptions({ plugins:{legend:{display:false}} })
     });
@@ -1608,7 +1613,9 @@
     var wrap = document.getElementById('categoryRef');
     var html = '<div class="table-wrap" style="max-height:280px;"><table><thead><tr><th>중분류</th><th>구분</th><th>소분류</th></tr></thead><tbody>';
     CATEGORY_TREE.forEach(function(c){
-      var tag = c.group==='verify' ? '<span class="tag tag-verify">검증수행</span>' : '<span class="tag tag-env">환경설정</span>';
+      var tag = c.group==='verify' ? '<span class="tag tag-verify">검증수행</span>'
+              : c.group==='pm' ? '<span class="tag tag-pm">PM업무</span>'
+              : '<span class="tag tag-env">환경설정</span>';
       html += '<tr><td>'+c.mid+'</td><td>'+tag+'</td><td>'+c.subs.join(', ')+'</td></tr>';
     });
     html += '</tbody></table></div>';
