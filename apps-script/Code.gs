@@ -54,17 +54,38 @@ function withLock_(fn) {
   }
 }
 
+// 실제 key-value 데이터가 들어 있는 시트를 식별하는 단서:
+// A열에 'key' 헤더 또는 앱이 쓰는 키가 존재하는 시트
+var KNOWN_KEYS = ['key', 'work-logs', 'active-timers', 'meta-members', 'meta-vehicles', 'meta-admin-pin'];
+var SHEET_CACHE = null;
+
 function sheet_() {
-  return SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+  if (SHEET_CACHE) return SHEET_CACHE;
+  var sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets();
+  var best = sheets[0];
+  var bestScore = -1;
+  for (var i = 0; i < sheets.length; i++) {
+    var s = sheets[i];
+    var last = s.getLastRow();
+    if (last < 1) continue;
+    var colA = s.getRange(1, 1, last, 1).getValues();
+    var score = 0;
+    for (var j = 0; j < colA.length; j++) {
+      if (KNOWN_KEYS.indexOf(String(colA[j][0])) !== -1) score++;
+    }
+    if (score > bestScore) { bestScore = score; best = s; }
+  }
+  SHEET_CACHE = best;
+  return SHEET_CACHE;
 }
 
-/** key가 있는 행 번호(1-base)를 반환, 없으면 -1 */
+/** key가 있는 행 번호(1-base)를 반환, 없으면 -1. 헤더 유무와 무관하게 전체를 훑는다 */
 function findRow_(sheet, key) {
   var last = sheet.getLastRow();
-  if (last < 2) return -1;
-  var keys = sheet.getRange(2, 1, last - 1, 1).getValues();
+  if (last < 1) return -1;
+  var keys = sheet.getRange(1, 1, last, 1).getValues();
   for (var i = 0; i < keys.length; i++) {
-    if (String(keys[i][0]) === String(key)) return i + 2;
+    if (String(keys[i][0]) === String(key)) return i + 1;
   }
   return -1;
 }
