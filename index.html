@@ -599,6 +599,19 @@
       return false;
     }
   }
+  async function sAppend(key, item){
+    // 서버(Apps Script)의 append 액션: 배열 전체를 덮어쓰지 않고 서버에서 항목 1건을
+    // 추가하므로 여러 명이 동시에 저장해도 기록이 유실되지 않는다. (id 중복이면 서버가 무시)
+    try{
+      var url = API_URL + '?action=append&key=' + encodeURIComponent(key) + '&value=' + encodeURIComponent(JSON.stringify(item));
+      var res = await fetch(url);
+      var data = await res.json();
+      return !!(data && data.ok);
+    }catch(e){
+      console.error('storage append failed', key, e);
+      return false;
+    }
+  }
   function setSyncing(on){
     var dot = document.getElementById('syncDot');
     var lbl = document.getElementById('syncLabel');
@@ -789,25 +802,34 @@
     };
   }
 
-  async function startTimer(){
-    var ctx = currentContext();
-    var mid = document.getElementById('timerMid').value;
-    var info = midInfo(mid);
-    var sub = document.getElementById('timerSub').value;
-    var stage = (info.group==='verify') ? document.getElementById('timerStage').value : null;
+  // 원격 저장이 느린 동안(수 초) 버튼 연타로 같은 작업이 중복 실행되는 것을 막는 플래그
+  var TIMER_BUSY = false;
 
-    var t = {
-      id: uid(), member: ctx.member, month: ctx.month, vehicle: ctx.vehicle,
-      mid: mid, sub: sub, group: info.group, stage: stage,
-      startTs: Date.now(), accumMs: 0, status: 'running'
-    };
-    setSyncing(true);
-    var latest = await sGet('active-timers', TIMERS);
-    latest.push(t);
-    await sSet('active-timers', latest);
-    TIMERS = latest;
-    setSyncing(false);
-    renderActiveTimers();
+  async function startTimer(){
+    if(TIMER_BUSY) return;
+    TIMER_BUSY = true;
+    try{
+      var ctx = currentContext();
+      var mid = document.getElementById('timerMid').value;
+      var info = midInfo(mid);
+      var sub = document.getElementById('timerSub').value;
+      var stage = (info.group==='verify') ? document.getElementById('timerStage').value : null;
+
+      var t = {
+        id: uid(), member: ctx.member, month: ctx.month, vehicle: ctx.vehicle,
+        mid: mid, sub: sub, group: info.group, stage: stage,
+        startTs: Date.now(), accumMs: 0, status: 'running'
+      };
+      setSyncing(true);
+      var latest = await sGet('active-timers', TIMERS);
+      latest.push(t);
+      await sSet('active-timers', latest);
+      TIMERS = latest;
+      renderActiveTimers();
+    } finally {
+      TIMER_BUSY = false;
+      setSyncing(false);
+    }
   }
 
   function elapsedMs(t){
@@ -858,21 +880,27 @@
   }
 
   async function toggleTimer(id){
-    setSyncing(true);
-    var latest = await sGet('active-timers', TIMERS);
-    var t = latest.find(function(x){return x.id===id;});
-    if(!t){ setSyncing(false); return; }
-    if(t.status==='running'){
-      t.accumMs = t.accumMs + (Date.now() - t.startTs);
-      t.status = 'paused';
-    } else {
-      t.startTs = Date.now();
-      t.status = 'running';
+    if(TIMER_BUSY) return;
+    TIMER_BUSY = true;
+    try{
+      setSyncing(true);
+      var latest = await sGet('active-timers', TIMERS);
+      var t = latest.find(function(x){return x.id===id;});
+      if(!t) return;
+      if(t.status==='running'){
+        t.accumMs = t.accumMs + (Date.now() - t.startTs);
+        t.status = 'paused';
+      } else {
+        t.startTs = Date.now();
+        t.status = 'running';
+      }
+      await sSet('active-timers', latest);
+      TIMERS = latest;
+      renderActiveTimers();
+    } finally {
+      TIMER_BUSY = false;
+      setSyncing(false);
     }
-    await sSet('active-timers', latest);
-    TIMERS = latest;
-    setSyncing(false);
-    renderActiveTimers();
   }
 
   var pendingStopId = null;
@@ -892,7 +920,9 @@
     document.getElementById('stopModal').classList.add('show');
   }
 
+  var STOP_SAVING = false;
   async function confirmStopSave(){
+    if(STOP_SAVING) return;
     var t = TIMERS.find(function(x){return x.id===pendingStopId;});
     if(!t) { document.getElementById('stopModal').classList.remove('show'); return; }
     var h = parseInt(document.getElementById('stopHour').value||'0',10);
@@ -905,22 +935,43 @@
     var note = document.getElementById('stopNote').value || '';
 
     var entry = {
-      id: uid(), member: t.member, month: t.month, vehicle: t.vehicle,
+      // 타이머 하나당 로그 하나이므로 타이머 id를 로그 id로 재사용 —
+      // 같은 타이머가 어떤 경로로든 두 번 저장돼도 아래 중복 검사에 걸리게 하는 멱등 키
+      id: t.id, member: t.member, month: t.month, vehicle: t.vehicle,
       mid: t.mid, sub: t.sub, group: t.group, stage: t.stage,
       minutes: minutes, date: date, note: note, source: 'timer'
     };
 
-    setSyncing(true);
-    var latestLogs = await sGet('work-logs', LOGS);
-    latestLogs.push(entry);
-    await sSet('work-logs', latestLogs);
-    LOGS = latestLogs;
+    STOP_SAVING = true;
+    var saveBtn = document.getElementById('stopSaveBtn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = '저장 중…';
+    try{
+      setSyncing(true);
+      // 서버가 append 액션을 지원하면 행 단위 추가(동시 저장에도 안전),
+      // 아직 구버전 서버라면 기존 읽기-수정-쓰기 방식으로 폴백
+      var appended = await sAppend('work-logs', entry);
+      if(appended){
+        if(!LOGS.some(function(x){return x.id===entry.id;})) LOGS.push(entry);
+      } else {
+        var latestLogs = await sGet('work-logs', LOGS);
+        if(!latestLogs.some(function(x){return x.id===entry.id;})){
+          latestLogs.push(entry);
+          await sSet('work-logs', latestLogs);
+        }
+        LOGS = latestLogs;
+      }
 
-    var latestTimers = await sGet('active-timers', TIMERS);
-    latestTimers = latestTimers.filter(function(x){return x.id!==t.id;});
-    await sSet('active-timers', latestTimers);
-    TIMERS = latestTimers;
-    setSyncing(false);
+      var latestTimers = await sGet('active-timers', TIMERS);
+      latestTimers = latestTimers.filter(function(x){return x.id!==t.id;});
+      await sSet('active-timers', latestTimers);
+      TIMERS = latestTimers;
+    } finally {
+      STOP_SAVING = false;
+      saveBtn.disabled = false;
+      saveBtn.textContent = '저장';
+      setSyncing(false);
+    }
 
     document.getElementById('stopModal').classList.remove('show');
     pendingStopId = null;
@@ -932,13 +983,19 @@
 
   async function cancelTimer(id){
     showConfirm('타이머 취소', '저장하지 않고 이 타이머를 삭제할까요? 경과 시간이 사라집니다.', async function(){
-      setSyncing(true);
-      var latest = await sGet('active-timers', TIMERS);
-      latest = latest.filter(function(x){return x.id!==id;});
-      await sSet('active-timers', latest);
-      TIMERS = latest;
-      setSyncing(false);
-      renderActiveTimers();
+      if(TIMER_BUSY) return;
+      TIMER_BUSY = true;
+      try{
+        setSyncing(true);
+        var latest = await sGet('active-timers', TIMERS);
+        latest = latest.filter(function(x){return x.id!==id;});
+        await sSet('active-timers', latest);
+        TIMERS = latest;
+        renderActiveTimers();
+      } finally {
+        TIMER_BUSY = false;
+        setSyncing(false);
+      }
     });
   }
 
