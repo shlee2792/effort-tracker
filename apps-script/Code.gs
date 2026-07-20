@@ -220,15 +220,22 @@ function deleteLog_(id) {
 
 /* ---------------- 미러 시트 (Looker Studio 연결용) ---------------- */
 var MIRROR_SHEET_NAME = '공수로그';
-var MIRROR_HEADER = ['날짜', '담당자', '월', '차수', '차종', '구분', '중분류', '소분류', '작업단계', '소요시간(분)', '방식', '비고', 'id'];
+var MIRROR_HEADER = [
+  '날짜', '담당자', '월', '차수', '차종', '구분', '중분류', '소분류', '작업단계', '소요시간(분)', '방식', '비고', 'id',
+  '측정값(분)', '시작시각', '저장시각', '확인상태'
+];
 
 function mirrorSheet_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var s = ss.getSheetByName(MIRROR_SHEET_NAME);
   if (!s) {
     s = ss.insertSheet(MIRROR_SHEET_NAME);
-    s.getRange(1, 1, 1, MIRROR_HEADER.length).setValues([MIRROR_HEADER]).setFontWeight('bold');
   }
+  // 헤더가 최신 컬럼 구성과 다르면(신규 생성 포함) 항상 맞춰 쓴다 — 기존 데이터 행은 그대로 유지
+  var headerRange = s.getRange(1, 1, 1, MIRROR_HEADER.length);
+  var current = s.getLastColumn() > 0 ? s.getRange(1, 1, 1, Math.min(s.getLastColumn(), MIRROR_HEADER.length)).getValues()[0] : [];
+  var matches = current.length === MIRROR_HEADER.length && current.every(function (v, i) { return v === MIRROR_HEADER[i]; });
+  if (!matches) headerRange.setValues([MIRROR_HEADER]).setFontWeight('bold');
   return s;
 }
 
@@ -238,11 +245,21 @@ function groupLabel_(g) {
   return '환경설정';
 }
 
+/** 신뢰도 표시: checkStatus가 있으면 그대로, 없으면(과거 데이터) source로 유추 */
+function checkStatusLabel_(e) {
+  if (e.checkStatus) return e.checkStatus;
+  return e.source === 'manual' ? '수동입력' : '확인불가';
+}
+
 function logToRow_(e) {
   return [
     e.date || '', e.member || '', e.month || '', (e.round || 1) + '차', e.vehicle || '',
     groupLabel_(e.group), e.mid || '', e.sub || '', e.stage || '',
-    e.minutes || 0, e.source === 'timer' ? '타이머' : '직접입력', e.note || '', e.id || ''
+    e.minutes || 0, e.source === 'timer' ? '타이머' : '직접입력', e.note || '', e.id || '',
+    (e.measuredMinutes != null) ? e.measuredMinutes : '',
+    e.startedAt ? new Date(e.startedAt) : '',
+    e.savedAt ? new Date(e.savedAt) : '',
+    checkStatusLabel_(e)
   ];
 }
 

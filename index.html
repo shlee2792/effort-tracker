@@ -196,6 +196,11 @@
   .tag-env{background:#F1EBF7;color:#5C3D82;}
   .tag-pm{background:#E3F5E7;color:#157A2C;}
   .tag-fail{background:var(--warn-soft);color:#A64500;}
+  /* 신뢰도(확인) 태그 — 관리자가 로그 탭에서만 보는 데이터 품질 표시 */
+  .tag-auto{background:#E3F5E7;color:#157A2C;}
+  .tag-edited{background:var(--warn-soft);color:#A64500;}
+  .tag-manualentry{background:#F1EBF7;color:#5C3D82;}
+  .tag-unknown{background:var(--panel-alt);color:var(--ink-faint);}
   .time-cell{font-family:var(--sans);font-variant-numeric:tabular-nums;font-weight:600;}
   .table-wrap{max-height:520px;overflow:auto;border:1px solid var(--line);border-radius:var(--r-lg);}
   .del-x{background:transparent;border:none;color:var(--ink-faint);cursor:pointer;font-size:14px;padding:2px 6px;border-radius:8px;}
@@ -387,7 +392,7 @@
           <thead>
             <tr>
               <th>날짜</th><th>담당자</th><th>월</th><th>차수</th><th>차종</th><th>중분류</th><th>소분류</th>
-              <th>작업 단계</th><th>시간</th><th>방식</th><th>비고</th><th></th>
+              <th>작업 단계</th><th>시간</th><th>방식</th><th>확인</th><th>비고</th><th></th>
             </tr>
           </thead>
           <tbody id="logTableBody"></tbody>
@@ -1017,7 +1022,9 @@
     var t = {
       id: uid(), member: ctx.member, month: ctx.month, round: ctx.round, vehicle: ctx.vehicle,
       mid: mid, sub: sub, group: info.group, stage: stage,
-      startTs: Date.now(), accumMs: 0, status: 'running'
+      startTs: Date.now(), accumMs: 0, status: 'running',
+      // 최초 시작 시각 — 일시정지/재개 때 갱신되는 startTs와 달리 종료까지 고정 (신뢰도 판정용 참고 정보)
+      firstStartedAt: Date.now()
     };
 
     // 1차: 로컬 목록으로 즉시 중복 검사 (연타는 여기서 0초에 걸러진다)
@@ -1157,12 +1164,16 @@
   }
 
   var pendingStopId = null;
+  // 종료 팝업이 열릴 때 타이머가 자동 계산한 원본 측정값 — 사용자가 h/m/s를 고치는지
+  // 판별하는 기준선. 이 값 자체는 사용자가 손댈 수 없다.
+  var STOP_MEASURED_MINUTES = null;
   function openStopModal(id){
     var t = TIMERS.find(function(x){return x.id===id;});
     if(!t) return;
     pendingStopId = id;
     var ms = elapsedMs(t);
     var totalSec = Math.round(ms/1000);
+    STOP_MEASURED_MINUTES = Math.round(totalSec/60*100)/100;
     document.getElementById('stopHour').value = Math.floor(totalSec/3600);
     document.getElementById('stopMin').value = Math.floor((totalSec%3600)/60);
     document.getElementById('stopSec').value = totalSec%60;
@@ -1187,12 +1198,19 @@
     var date = document.getElementById('stopDate').value || todayStr();
     var note = document.getElementById('stopNote').value || '';
 
+    // 신뢰도 판정: 종료 팝업이 자동으로 채운 값과 실제 저장값이 다르면 수동 보정된 것
+    // (반올림 오차 방지용 허용오차 0.02분 ≈ 1.2초)
+    var measuredMinutes = STOP_MEASURED_MINUTES;
+    var checkStatus = (measuredMinutes!=null && Math.abs(minutes-measuredMinutes)<0.02) ? '자동측정' : '수정됨';
+
     var entry = {
       // 타이머 하나당 로그 하나이므로 타이머 id를 로그 id로 재사용 —
       // 같은 타이머가 어떤 경로로든 두 번 저장돼도 아래 중복 검사에 걸리게 하는 멱등 키
       id: t.id, member: t.member, month: t.month, round: t.round||1, vehicle: t.vehicle,
       mid: t.mid, sub: t.sub, group: t.group, stage: t.stage,
-      minutes: minutes, date: date, note: note, source: 'timer'
+      minutes: minutes, date: date, note: note, source: 'timer',
+      measuredMinutes: measuredMinutes, startedAt: t.firstStartedAt || t.startTs, savedAt: Date.now(),
+      checkStatus: checkStatus
     };
 
     STOP_SAVING = true;
@@ -1227,6 +1245,7 @@
       }
     } finally {
       STOP_SAVING = false;
+      STOP_MEASURED_MINUTES = null;
       saveBtn.disabled = false;
       saveBtn.textContent = '저장';
       setSyncing(false);
@@ -1345,6 +1364,17 @@
 
     var editing = EDITING_LOG_ID;
     var orig = editing ? LOGS.find(function(x){return x.id===editing;}) : null;
+    // 신뢰도 표시: 새로 추가하는 기록은 항상 수동입력. 기존 기록을 이 창으로 고치는 경우,
+    // 원래 타이머로 측정된 기록이었다면 "수정됨"으로 전환(측정 기준선은 참고용으로 보존),
+    // 원래도 수동입력이었다면 그대로 수동입력 유지.
+    var checkStatus, measuredMinutes, startedAt;
+    if(!orig){
+      checkStatus = '수동입력'; measuredMinutes = null; startedAt = null;
+    } else if(orig.source === 'manual'){
+      checkStatus = '수동입력'; measuredMinutes = orig.measuredMinutes||null; startedAt = orig.startedAt||null;
+    } else {
+      checkStatus = '수정됨'; measuredMinutes = orig.measuredMinutes||null; startedAt = orig.startedAt||null;
+    }
     var entry = {
       // 수정 모드면 원래 id를 유지해 같은 기록을 교체, 방식(타이머/직접입력)도 원본 유지
       id: editing || uid(),
@@ -1359,7 +1389,8 @@
       minutes: Math.round(totalSeconds/60*100)/100,
       date: document.getElementById('manualDate').value || todayStr(),
       note: document.getElementById('manualNote').value || '',
-      source: orig ? orig.source : 'manual'
+      source: orig ? orig.source : 'manual',
+      measuredMinutes: measuredMinutes, startedAt: startedAt, savedAt: Date.now(), checkStatus: checkStatus
     };
 
     MANUAL_SAVING = true;
@@ -1441,6 +1472,12 @@
                    : l.group==='pm' ? '<span class="tag tag-pm">PM업무</span>'
                    : '<span class="tag tag-env">환경설정</span>';
       var subTag = (l.sub==='Fail 분석' || l.sub==='이슈리포트 작성') ? '<span class="tag tag-fail" style="margin-left:4px;">이슈대응</span>' : '';
+      // 신뢰도 표시 — 신규 항목엔 checkStatus가 있고, 과거 기록은 없으므로 source로 유추
+      var checkVal = l.checkStatus || (l.source==='manual' ? '수동입력' : null);
+      var checkTag = checkVal==='자동측정' ? '<span class="tag tag-auto">자동측정</span>'
+                   : checkVal==='수정됨' ? '<span class="tag tag-edited">수정됨</span>'
+                   : checkVal==='수동입력' ? '<span class="tag tag-manualentry">수동입력</span>'
+                   : '<span class="tag tag-unknown">확인불가</span>';
       tr.innerHTML =
         '<td>'+l.date+'</td>'+
         '<td>'+l.member+'</td>'+
@@ -1452,6 +1489,7 @@
         '<td>'+(l.stage||'-')+'</td>'+
         '<td class="time-cell">'+fmtDuration(l.minutes)+'</td>'+
         '<td>'+(l.source==='timer'?'타이머':'직접입력')+'</td>'+
+        '<td>'+checkTag+'</td>'+
         '<td>'+(l.note?escapeHtml(l.note):'-')+'</td>'+
         '<td style="white-space:nowrap;"><button class="edit-x" title="수정">✏️</button><button class="del-x" title="삭제">✕</button></td>';
       tr.querySelector('.edit-x').addEventListener('click', function(){ openManualModal(l); });
