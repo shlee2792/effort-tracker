@@ -100,7 +100,8 @@
   .card .card-sub{font-size:12.5px;color:var(--ink-faint);margin:0 0 14px;line-height:1.5;}
   .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
   .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
-  @media (max-width:820px){ .grid-2,.grid-3{grid-template-columns:1fr;} }
+  .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
+  @media (max-width:820px){ .grid-2,.grid-3,.grid-4{grid-template-columns:1fr;} }
 
   /* Forms */
   label{display:block;font-size:12.5px;color:var(--ink-soft);font-weight:600;margin-bottom:6px;}
@@ -234,30 +235,40 @@
   </div>
 
   <div class="tabbar">
-    <button class="tab-btn active" data-tab="record">기록 입력</button>
+    <button class="tab-btn active" data-tab="record">공수 입력</button>
     <button class="tab-btn" data-tab="dash">대시보드</button>
     <button class="tab-btn" data-tab="log">🔒 로그</button>
     <button class="tab-btn" data-tab="settings">🔒 설정</button>
   </div>
 
-  <!-- ===================== 기록 입력 ===================== -->
+  <!-- ===================== 공수 입력 ===================== -->
   <div class="tab-panel active" id="tab-record">
 
     <div class="card">
       <h2>기본 정보</h2>
-      <p class="card-sub">담당자 · 월(펌웨어 배포차수) · 차종을 먼저 선택하세요. 아래 두 패널에서 공통으로 사용됩니다.</p>
-      <div class="grid-3">
+      <p class="card-sub">담당자 · 월 · 배포 차수 · 차종을 먼저 선택하세요. 아래 두 패널에서 공통으로 사용됩니다.</p>
+      <div class="grid-4">
         <div class="field">
           <label>담당자</label>
           <select id="ctxMember"></select>
         </div>
         <div class="field">
-          <label>월 (배포차수)</label>
+          <label>월</label>
           <input type="month" id="ctxMonth" />
         </div>
         <div class="field">
           <label>차종</label>
           <select id="ctxVehicle"></select>
+        </div>
+        <div class="field">
+          <label>배포 차수</label>
+          <select id="ctxRound">
+            <option value="1">1차</option>
+            <option value="2">2차</option>
+            <option value="3">3차</option>
+            <option value="4">4차</option>
+            <option value="5">5차</option>
+          </select>
         </div>
       </div>
     </div>
@@ -302,8 +313,13 @@
 
     <div id="logContent" class="hidden">
     <div class="card">
-      <h2>전체 기록</h2>
-      <p class="card-sub">필터로 좁혀서 확인하고, 잘못된 항목은 오른쪽 × 로 삭제할 수 있습니다.</p>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+        <div>
+          <h2>전체 기록</h2>
+          <p class="card-sub">필터로 좁혀서 확인하고, 잘못된 항목은 오른쪽 × 로 삭제할 수 있습니다.</p>
+        </div>
+        <button class="btn btn-primary btn-sm" id="manualAddBtn" style="white-space:nowrap;">+ 기록 직접 추가</button>
+      </div>
       <div class="filters">
         <div class="field">
           <label>담당자</label>
@@ -312,6 +328,10 @@
         <div class="field">
           <label>월</label>
           <select id="logFilterMonth"><option value="all">전체</option></select>
+        </div>
+        <div class="field">
+          <label>차수</label>
+          <select id="logFilterRound"><option value="all">전체</option></select>
         </div>
         <div class="field">
           <label>차종</label>
@@ -340,7 +360,7 @@
         <table>
           <thead>
             <tr>
-              <th>날짜</th><th>담당자</th><th>월</th><th>차종</th><th>중분류</th><th>소분류</th>
+              <th>날짜</th><th>담당자</th><th>월</th><th>차수</th><th>차종</th><th>중분류</th><th>소분류</th>
               <th>작업 단계</th><th>시간</th><th>방식</th><th>비고</th><th></th>
             </tr>
           </thead>
@@ -363,6 +383,10 @@
         <div class="field">
           <label>월</label>
           <select id="dashFilterMonth"><option value="all">전체</option></select>
+        </div>
+        <div class="field">
+          <label>차수</label>
+          <select id="dashFilterRound"><option value="all">전체</option></select>
         </div>
         <div class="field">
           <label>차종</label>
@@ -523,6 +547,74 @@
   </div>
 </div>
 
+<!-- Manual log add modal (admin) -->
+<div class="modal-overlay" id="manualModal">
+  <div class="modal-box" style="max-height:85vh;overflow-y:auto;">
+    <h3>기록 직접 추가</h3>
+    <p class="modal-desc">타이머 없이 공수 기록을 직접 추가합니다. 관리자 전용 기능입니다.</p>
+    <div class="field">
+      <label>담당자</label>
+      <select id="manualMember"></select>
+    </div>
+    <div class="field">
+      <label>월</label>
+      <input type="month" id="manualMonth" />
+    </div>
+    <div class="field">
+      <label>차종</label>
+      <select id="manualVehicle"></select>
+    </div>
+    <div class="field">
+      <label>배포 차수</label>
+      <select id="manualRound">
+        <option value="1">1차</option>
+        <option value="2">2차</option>
+        <option value="3">3차</option>
+        <option value="4">4차</option>
+        <option value="5">5차</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>중분류</label>
+      <select id="manualMid"></select>
+    </div>
+    <div class="field">
+      <label>소분류</label>
+      <select id="manualSub"></select>
+    </div>
+    <div class="field" id="manualStageField">
+      <label>작업 단계</label>
+      <select id="manualStage"></select>
+    </div>
+    <div class="field field-row-3">
+      <div>
+        <label>시간</label>
+        <input type="number" id="manualHour" min="0" value="0" />
+      </div>
+      <div>
+        <label>분</label>
+        <input type="number" id="manualMin" min="0" max="59" value="0" />
+      </div>
+      <div>
+        <label>초</label>
+        <input type="number" id="manualSec" min="0" max="59" value="0" />
+      </div>
+    </div>
+    <div class="field">
+      <label>작업 날짜</label>
+      <input type="date" id="manualDate" />
+    </div>
+    <div class="field">
+      <label>비고 (선택)</label>
+      <textarea id="manualNote" placeholder="특이사항이 있으면 기록하세요"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="manualCancelBtn">취소</button>
+      <button class="btn btn-primary" id="manualSaveBtn">추가</button>
+    </div>
+  </div>
+</div>
+
 <!-- Confirm modal (generic) -->
 <div class="modal-overlay" id="confirmModal">
   <div class="modal-box">
@@ -610,6 +702,29 @@
     }catch(e){
       console.error('storage append failed', key, e);
       return false;
+    }
+  }
+  async function sStartTimer(t){
+    // 서버가 읽기+중복검사+추가를 한 번에 처리 (왕복 1회). 미지원 서버면 null 반환 → 폴백
+    try{
+      var url = API_URL + '?action=start-timer&value=' + encodeURIComponent(JSON.stringify(t));
+      var res = await fetch(url);
+      var data = await res.json();
+      return (data && data.ok) ? data : null;
+    }catch(e){
+      console.error('start-timer failed', e);
+      return null;
+    }
+  }
+  async function sRemoveTimer(id){
+    try{
+      var url = API_URL + '?action=remove-timer&id=' + encodeURIComponent(id);
+      var res = await fetch(url);
+      var data = await res.json();
+      return (data && data.ok) ? data : null;
+    }catch(e){
+      console.error('remove-timer failed', e);
+      return null;
     }
   }
   function setSyncing(on){
@@ -700,7 +815,8 @@
     setSyncing(true);
     var [l, t] = await Promise.all([ sGet('work-logs', LOGS), sGet('active-timers', TIMERS) ]);
     LOGS = l || [];
-    TIMERS = t || [];
+    // 서버 반영이 끝나지 않은 낙관적 타이머가 폴링에 지워지지 않게 병합
+    mergeTimers(t || []);
     setSyncing(false);
     renderActiveTimers();
     refreshFilterOptions();
@@ -765,13 +881,16 @@
 
   function refreshFilterOptions(){
     var months = uniqueSorted(LOGS.map(function(l){return l.month;}));
+    var rounds = uniqueSorted(LOGS.map(function(l){return (l.round||1)+'차';}));
     var memberOpts = ['all'].concat(MEMBERS);
     var vehicleOpts = ['all'].concat(VEHICLES);
     var monthOpts = ['all'].concat(months);
+    var roundOpts = ['all'].concat(rounds);
 
     [['logFilterMember',memberOpts],['dashFilterMember',memberOpts],
      ['logFilterVehicle',vehicleOpts],['dashFilterVehicle',vehicleOpts],
-     ['logFilterMonth',monthOpts],['dashFilterMonth',monthOpts]].forEach(function(pair){
+     ['logFilterMonth',monthOpts],['dashFilterMonth',monthOpts],
+     ['logFilterRound',roundOpts],['dashFilterRound',roundOpts]].forEach(function(pair){
       var sel = document.getElementById(pair[0]);
       var prev = sel.value;
       sel.innerHTML='';
@@ -798,6 +917,7 @@
     return {
       member: document.getElementById('ctxMember').value,
       month: document.getElementById('ctxMonth').value || currentMonthStr(),
+      round: parseInt(document.getElementById('ctxRound').value, 10) || 1,
       vehicle: document.getElementById('ctxVehicle').value
     };
   }
@@ -805,47 +925,92 @@
   // 원격 저장이 느린 동안(수 초) 버튼 연타로 같은 작업이 중복 실행되는 것을 막는 플래그
   var TIMER_BUSY = false;
 
-  async function startTimer(){
-    if(TIMER_BUSY) return;
-    TIMER_BUSY = true;
-    var startBtn = document.getElementById('startTimerBtn');
-    startBtn.disabled = true;
-    startBtn.textContent = '시작 중…';
-    try{
-      var ctx = currentContext();
-      var mid = document.getElementById('timerMid').value;
-      var info = midInfo(mid);
-      var sub = document.getElementById('timerSub').value;
-      var stage = (info.group==='verify') ? document.getElementById('timerStage').value : null;
+  // 서버 반영이 끝나지 않은(낙관적으로 먼저 그려진) 타이머 id 목록.
+  // 폴링이 이 타이머를 지워버리지 않게 하고, 종료/취소 버튼도 반영 완료까지 잠근다.
+  var PENDING_TIMER_IDS = {};
+  // 폴백(sGet→sSet) 경로가 동시에 두 개 돌면 서로 덮어쓸 수 있어 순차 실행한다
+  var TIMER_SYNC_CHAIN = Promise.resolve();
 
-      var t = {
-        id: uid(), member: ctx.member, month: ctx.month, vehicle: ctx.vehicle,
-        mid: mid, sub: sub, group: info.group, stage: stage,
-        startTs: Date.now(), accumMs: 0, status: 'running'
-      };
-      setSyncing(true);
-      var latest = await sGet('active-timers', TIMERS);
-      // 같은 인원·차종·작업의 타이머가 이미 있으면 연타/실수로 보고 새로 만들지 않는다
-      var dup = latest.find(function(x){
-        return x.member===t.member && x.vehicle===t.vehicle && x.mid===t.mid &&
-               x.sub===t.sub && (x.stage||null)===(t.stage||null);
-      });
-      if(dup){
-        TIMERS = latest;
-        renderActiveTimers();
-        alert('같은 항목의 타이머가 이미 실행 중입니다.\n기존 타이머를 이어서 사용하거나, 취소한 뒤 다시 시작하세요.');
-        return;
-      }
-      latest.push(t);
-      await sSet('active-timers', latest);
-      TIMERS = latest;
-      renderActiveTimers();
-    } finally {
-      TIMER_BUSY = false;
-      startBtn.disabled = false;
-      startBtn.textContent = '▶ 시작';
-      setSyncing(false);
+  function isSameTask(a, b){
+    return a.member===b.member && a.vehicle===b.vehicle && a.mid===b.mid &&
+           a.sub===b.sub && (a.stage||null)===(b.stage||null) &&
+           (a.round||1)===(b.round||1);
+  }
+
+  function startTimer(){
+    var ctx = currentContext();
+    var mid = document.getElementById('timerMid').value;
+    var info = midInfo(mid);
+    var sub = document.getElementById('timerSub').value;
+    var stage = (info.group==='verify') ? document.getElementById('timerStage').value : null;
+
+    var t = {
+      id: uid(), member: ctx.member, month: ctx.month, round: ctx.round, vehicle: ctx.vehicle,
+      mid: mid, sub: sub, group: info.group, stage: stage,
+      startTs: Date.now(), accumMs: 0, status: 'running'
+    };
+
+    // 1차: 로컬 목록으로 즉시 중복 검사 (연타는 여기서 0초에 걸러진다)
+    if(TIMERS.some(function(x){ return isSameTask(x, t); })){
+      alert('같은 항목의 타이머가 이미 실행 중입니다.\n기존 타이머를 이어서 사용하거나, 취소한 뒤 다시 시작하세요.');
+      return;
     }
+
+    // 낙관적 업데이트: 서버 응답을 기다리지 않고 즉시 카드를 띄운다
+    TIMERS.push(t);
+    PENDING_TIMER_IDS[t.id] = true;
+    renderActiveTimers();
+
+    TIMER_SYNC_CHAIN = TIMER_SYNC_CHAIN.then(function(){ return syncStartTimer(t); });
+  }
+
+  function rollbackTimer(id, msg){
+    TIMERS = TIMERS.filter(function(x){ return x.id!==id; });
+    delete PENDING_TIMER_IDS[id];
+    renderActiveTimers();
+    if(msg) alert(msg);
+  }
+
+  async function syncStartTimer(t){
+    setSyncing(true);
+    try{
+      var r = await sStartTimer(t);
+      if(r){
+        if(!r.started){
+          rollbackTimer(t.id, '같은 항목의 타이머가 이미 실행 중입니다. (다른 기기에서 시작됨)');
+          return;
+        }
+        // 서버가 돌려준 최신 목록으로 동기화 (다른 pending 타이머는 유지)
+        mergeTimers(r.timers);
+      } else {
+        // 구버전 서버 폴백: 읽기→중복검사→쓰기
+        var latest = await sGet('active-timers', TIMERS.filter(function(x){ return x.id!==t.id; }));
+        if(latest.some(function(x){ return isSameTask(x, t); })){
+          rollbackTimer(t.id, '같은 항목의 타이머가 이미 실행 중입니다. (다른 기기에서 시작됨)');
+          return;
+        }
+        latest.push(t);
+        var ok = await sSet('active-timers', latest);
+        if(!ok){
+          rollbackTimer(t.id, '타이머 저장에 실패했습니다. 네트워크 확인 후 다시 시작해주세요.');
+          return;
+        }
+        mergeTimers(latest);
+      }
+    } finally {
+      delete PENDING_TIMER_IDS[t.id];
+      setSyncing(false);
+      renderActiveTimers();
+    }
+  }
+
+  // 서버 목록을 받아들이되, 아직 반영 중인 낙관적 타이머는 지우지 않는다
+  function mergeTimers(serverList){
+    var merged = (serverList || []).slice();
+    TIMERS.forEach(function(x){
+      if(PENDING_TIMER_IDS[x.id] && !merged.some(function(y){ return y.id===x.id; })) merged.push(x);
+    });
+    TIMERS = merged;
   }
 
   function elapsedMs(t){
@@ -865,17 +1030,19 @@
       card.className = 'timer-card' + (t.status==='paused' ? ' paused' : '');
       card.dataset.id = t.id;
 
+      var pending = !!PENDING_TIMER_IDS[t.id];
       var stageTxt = t.stage ? (' · '+t.stage) : '';
+      var dis = pending ? ' disabled' : '';
       card.innerHTML =
         '<div class="timer-left">' +
-          '<span class="timer-tag">'+t.member+' · '+t.vehicle+' · '+t.month+'</span>' +
+          '<span class="timer-tag">'+t.member+' · '+t.vehicle+' · '+t.month+' '+(t.round||1)+'차'+(pending?' · 동기화 중…':'')+'</span>' +
           '<span class="timer-name">'+t.mid+' — '+t.sub+stageTxt+'</span>' +
         '</div>' +
         '<div class="timer-clock"><span class="live-dot '+(t.status==='running'?'run':'pause')+'"></span><span class="clockval">'+fmtClock(elapsedMs(t))+'</span></div>' +
         '<div class="timer-actions">' +
-          '<button class="btn btn-secondary btn-sm act-toggle">'+(t.status==='running'?'일시정지':'재개')+'</button>' +
-          '<button class="btn btn-primary btn-sm act-stop">종료</button>' +
-          '<button class="btn btn-danger btn-sm act-cancel">취소</button>' +
+          '<button class="btn btn-secondary btn-sm act-toggle"'+dis+'>'+(t.status==='running'?'일시정지':'재개')+'</button>' +
+          '<button class="btn btn-primary btn-sm act-stop"'+dis+'>종료</button>' +
+          '<button class="btn btn-danger btn-sm act-cancel"'+dis+'>취소</button>' +
         '</div>';
 
       card.querySelector('.act-toggle').addEventListener('click', function(){ toggleTimer(t.id); });
@@ -932,7 +1099,7 @@
     document.getElementById('stopDate').value = todayStr();
     document.getElementById('stopNote').value = '';
     document.getElementById('stopModalDesc').textContent =
-      t.member+' · '+t.vehicle+' · '+t.mid+' — '+t.sub+(t.stage?(' · '+t.stage):'')+' 항목을 저장합니다. 필요하면 시간을 보정하세요.';
+      t.member+' · '+t.vehicle+' · '+(t.round||1)+'차 · '+t.mid+' — '+t.sub+(t.stage?(' · '+t.stage):'')+' 항목을 저장합니다. 필요하면 시간을 보정하세요.';
     document.getElementById('stopModal').classList.add('show');
   }
 
@@ -953,7 +1120,7 @@
     var entry = {
       // 타이머 하나당 로그 하나이므로 타이머 id를 로그 id로 재사용 —
       // 같은 타이머가 어떤 경로로든 두 번 저장돼도 아래 중복 검사에 걸리게 하는 멱등 키
-      id: t.id, member: t.member, month: t.month, vehicle: t.vehicle,
+      id: t.id, member: t.member, month: t.month, round: t.round||1, vehicle: t.vehicle,
       mid: t.mid, sub: t.sub, group: t.group, stage: t.stage,
       minutes: minutes, date: date, note: note, source: 'timer'
     };
@@ -978,10 +1145,16 @@
         LOGS = latestLogs;
       }
 
-      var latestTimers = await sGet('active-timers', TIMERS);
-      latestTimers = latestTimers.filter(function(x){return x.id!==t.id;});
-      await sSet('active-timers', latestTimers);
-      TIMERS = latestTimers;
+      var removed = await sRemoveTimer(t.id);
+      if(removed){
+        mergeTimers(removed.timers);
+      } else {
+        // 구버전 서버 폴백
+        var latestTimers = await sGet('active-timers', TIMERS);
+        latestTimers = latestTimers.filter(function(x){return x.id!==t.id;});
+        await sSet('active-timers', latestTimers);
+        TIMERS = latestTimers;
+      }
     } finally {
       STOP_SAVING = false;
       saveBtn.disabled = false;
@@ -1003,10 +1176,16 @@
       TIMER_BUSY = true;
       try{
         setSyncing(true);
-        var latest = await sGet('active-timers', TIMERS);
-        latest = latest.filter(function(x){return x.id!==id;});
-        await sSet('active-timers', latest);
-        TIMERS = latest;
+        var removed = await sRemoveTimer(id);
+        if(removed){
+          mergeTimers(removed.timers);
+        } else {
+          // 구버전 서버 폴백
+          var latest = await sGet('active-timers', TIMERS);
+          latest = latest.filter(function(x){return x.id!==id;});
+          await sSet('active-timers', latest);
+          TIMERS = latest;
+        }
         renderActiveTimers();
       } finally {
         TIMER_BUSY = false;
@@ -1017,19 +1196,97 @@
 
   /* ---------------- log tab ---------------- */
   function bindLogTab(){
-    ['logFilterMember','logFilterMonth','logFilterVehicle','logFilterGroup'].forEach(function(id){
+    ['logFilterMember','logFilterMonth','logFilterRound','logFilterVehicle','logFilterGroup'].forEach(function(id){
       document.getElementById(id).addEventListener('change', renderLogTable);
     });
+    document.getElementById('manualAddBtn').addEventListener('click', openManualModal);
+    document.getElementById('manualMid').addEventListener('change', function(){ onMidChange('manual'); });
+  }
+
+  function openManualModal(){
+    fillSelect(document.getElementById('manualMember'), MEMBERS, true);
+    fillSelect(document.getElementById('manualVehicle'), VEHICLES, true);
+    fillSelect(document.getElementById('manualMid'), CATEGORY_TREE.map(function(c){ return c.mid; }), true);
+    onMidChange('manual');
+    document.getElementById('manualMonth').value = currentMonthStr();
+    document.getElementById('manualRound').value = '1';
+    document.getElementById('manualDate').value = todayStr();
+    document.getElementById('manualHour').value = 0;
+    document.getElementById('manualMin').value = 0;
+    document.getElementById('manualSec').value = 0;
+    document.getElementById('manualNote').value = '';
+    document.getElementById('manualModal').classList.add('show');
+  }
+
+  var MANUAL_SAVING = false;
+  async function confirmManualSave(){
+    if(MANUAL_SAVING) return;
+    var h = parseInt(document.getElementById('manualHour').value||'0',10);
+    var m = parseInt(document.getElementById('manualMin').value||'0',10);
+    var s = parseInt(document.getElementById('manualSec').value||'0',10);
+    var totalSeconds = h*3600+m*60+s;
+    if(totalSeconds<=0){ alert('소요시간은 0보다 커야 합니다.'); return; }
+    var mid = document.getElementById('manualMid').value;
+    var info = midInfo(mid);
+    if(!info){ alert('중분류를 선택하세요.'); return; }
+
+    var entry = {
+      id: uid(),
+      member: document.getElementById('manualMember').value,
+      month: document.getElementById('manualMonth').value || currentMonthStr(),
+      round: parseInt(document.getElementById('manualRound').value, 10) || 1,
+      vehicle: document.getElementById('manualVehicle').value,
+      mid: mid,
+      sub: document.getElementById('manualSub').value,
+      group: info.group,
+      stage: (info.group==='verify') ? document.getElementById('manualStage').value : null,
+      minutes: Math.round(totalSeconds/60*100)/100,
+      date: document.getElementById('manualDate').value || todayStr(),
+      note: document.getElementById('manualNote').value || '',
+      source: 'manual'
+    };
+
+    MANUAL_SAVING = true;
+    var saveBtn = document.getElementById('manualSaveBtn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = '저장 중…';
+    try{
+      setSyncing(true);
+      // 서버 append(멱등) 우선, 구버전 서버면 읽기-수정-쓰기 폴백
+      var appended = await sAppend('work-logs', entry);
+      if(appended){
+        if(!LOGS.some(function(x){return x.id===entry.id;})) LOGS.push(entry);
+      } else {
+        var latestLogs = await sGet('work-logs', LOGS);
+        if(!latestLogs.some(function(x){return x.id===entry.id;})){
+          latestLogs.push(entry);
+          var ok = await sSet('work-logs', latestLogs);
+          if(!ok){ alert('저장에 실패했습니다. 네트워크 확인 후 다시 시도해주세요.'); return; }
+        }
+        LOGS = latestLogs;
+      }
+      document.getElementById('manualModal').classList.remove('show');
+      refreshFilterOptions();
+      renderLogTable();
+      renderDashboard();
+    } finally {
+      MANUAL_SAVING = false;
+      saveBtn.disabled = false;
+      saveBtn.textContent = '추가';
+      setSyncing(false);
+    }
   }
 
   function filteredLogsFor(prefix){
     var member = document.getElementById(prefix+'FilterMember').value;
     var month = document.getElementById(prefix+'FilterMonth').value;
+    var round = document.getElementById(prefix+'FilterRound').value;
     var vehicle = document.getElementById(prefix+'FilterVehicle').value;
     var group = prefix==='log' ? document.getElementById('logFilterGroup').value : 'all';
     return LOGS.filter(function(l){
       if(member!=='all' && l.member!==member) return false;
       if(month!=='all' && l.month!==month) return false;
+      if(round!=='all' && ((l.round||1)+'차')!==round) return false;
       if(vehicle!=='all' && l.vehicle!==vehicle) return false;
       if(group!=='all' && l.group!==group) return false;
       return true;
@@ -1052,6 +1309,7 @@
         '<td>'+l.date+'</td>'+
         '<td>'+l.member+'</td>'+
         '<td>'+l.month+'</td>'+
+        '<td>'+(l.round||1)+'차</td>'+
         '<td>'+l.vehicle+'</td>'+
         '<td>'+l.mid+' '+groupTag+'</td>'+
         '<td>'+l.sub+subTag+'</td>'+
@@ -1089,7 +1347,7 @@
 
   /* ---------------- dashboard ---------------- */
   function bindDashTab(){
-    ['dashFilterMember','dashFilterMonth','dashFilterVehicle'].forEach(function(id){
+    ['dashFilterMember','dashFilterMonth','dashFilterRound','dashFilterVehicle'].forEach(function(id){
       document.getElementById(id).addEventListener('change', renderDashboard);
     });
   }
@@ -1364,6 +1622,10 @@
       pendingStopId = null;
     });
     document.getElementById('stopSaveBtn').addEventListener('click', confirmStopSave);
+    document.getElementById('manualCancelBtn').addEventListener('click', function(){
+      document.getElementById('manualModal').classList.remove('show');
+    });
+    document.getElementById('manualSaveBtn').addEventListener('click', confirmManualSave);
     document.getElementById('confirmCancelBtn').addEventListener('click', function(){
       document.getElementById('confirmModal').classList.remove('show');
     });
