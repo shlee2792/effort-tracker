@@ -181,6 +181,8 @@
   .table-wrap{max-height:520px;overflow:auto;border:1px solid var(--line);border-radius:14px;}
   .del-x{background:transparent;border:none;color:var(--ink-faint);cursor:pointer;font-size:14px;padding:2px 6px;border-radius:8px;}
   .del-x:hover{background:var(--danger-soft);color:var(--danger);}
+  .edit-x{background:transparent;border:none;color:var(--ink-faint);cursor:pointer;font-size:13px;padding:2px 6px;border-radius:8px;}
+  .edit-x:hover{background:var(--accent-soft);color:var(--accent-dark);}
 
   /* Filters bar */
   .filters{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;align-items:flex-end;}
@@ -552,8 +554,8 @@
 <!-- Manual log add modal (admin) -->
 <div class="modal-overlay" id="manualModal">
   <div class="modal-box" style="max-height:85vh;overflow-y:auto;">
-    <h3>기록 직접 추가</h3>
-    <p class="modal-desc">타이머 없이 공수 기록을 직접 추가합니다. 관리자 전용 기능입니다.</p>
+    <h3 id="manualModalTitle">기록 직접 추가</h3>
+    <p class="modal-desc" id="manualModalDesc">타이머 없이 공수 기록을 직접 추가합니다. 관리자 전용 기능입니다.</p>
     <div class="field">
       <label>담당자</label>
       <select id="manualMember"></select>
@@ -727,6 +729,29 @@
       return (data && data.ok) ? data : null;
     }catch(e){
       console.error('remove-timer failed', e);
+      return null;
+    }
+  }
+  async function sUpdateLog(entry){
+    // 로그 1건을 id 기준으로 교체. 미지원 서버면 null 반환 → 폴백
+    try{
+      var url = API_URL + '?action=update-log&value=' + encodeURIComponent(JSON.stringify(entry));
+      var res = await fetch(url);
+      var data = await res.json();
+      return (data && data.ok) ? data : null;
+    }catch(e){
+      console.error('update-log failed', e);
+      return null;
+    }
+  }
+  async function sDeleteLog(id){
+    try{
+      var url = API_URL + '?action=delete-log&id=' + encodeURIComponent(id);
+      var res = await fetch(url);
+      var data = await res.json();
+      return (data && data.ok) ? data : null;
+    }catch(e){
+      console.error('delete-log failed', e);
       return null;
     }
   }
@@ -1206,18 +1231,61 @@
     document.getElementById('manualMid').addEventListener('change', function(){ onMidChange('manual'); });
   }
 
-  function openManualModal(){
-    fillSelect(document.getElementById('manualMember'), MEMBERS, true);
-    fillSelect(document.getElementById('manualVehicle'), VEHICLES, true);
+  // 값이 목록에 없으면(예: 설정에서 삭제된 인원·차종의 과거 기록) 옵션을 임시로 추가해 선택 가능하게 한다
+  function ensureOption(sel, val){
+    if(!val) return;
+    for(var i=0;i<sel.options.length;i++){ if(sel.options[i].value===val) return; }
+    var opt = document.createElement('option');
+    opt.value = val; opt.textContent = val;
+    sel.appendChild(opt);
+  }
+
+  var EDITING_LOG_ID = null; // null이면 추가 모드, id가 있으면 해당 기록 수정 모드
+  function openManualModal(editLog){
+    EDITING_LOG_ID = (editLog && editLog.id) ? editLog.id : null;
+    var memberSel = document.getElementById('manualMember');
+    var vehicleSel = document.getElementById('manualVehicle');
+    fillSelect(memberSel, MEMBERS, true);
+    fillSelect(vehicleSel, VEHICLES, true);
     fillSelect(document.getElementById('manualMid'), CATEGORY_TREE.map(function(c){ return c.mid; }), true);
-    onMidChange('manual');
-    document.getElementById('manualMonth').value = currentMonthStr();
-    document.getElementById('manualRound').value = '1';
-    document.getElementById('manualDate').value = todayStr();
-    document.getElementById('manualHour').value = 0;
-    document.getElementById('manualMin').value = 0;
-    document.getElementById('manualSec').value = 0;
-    document.getElementById('manualNote').value = '';
+
+    if(EDITING_LOG_ID){
+      ensureOption(memberSel, editLog.member);
+      ensureOption(vehicleSel, editLog.vehicle);
+      memberSel.value = editLog.member;
+      vehicleSel.value = editLog.vehicle;
+      document.getElementById('manualMid').value = editLog.mid;
+      onMidChange('manual');
+      document.getElementById('manualSub').value = editLog.sub;
+      var info = midInfo(editLog.mid);
+      if(info && info.group==='verify' && editLog.stage){
+        ensureOption(document.getElementById('manualStage'), editLog.stage);
+        document.getElementById('manualStage').value = editLog.stage;
+      }
+      document.getElementById('manualMonth').value = editLog.month;
+      document.getElementById('manualRound').value = String(editLog.round||1);
+      var totalSec = Math.round((editLog.minutes||0)*60);
+      document.getElementById('manualHour').value = Math.floor(totalSec/3600);
+      document.getElementById('manualMin').value = Math.floor((totalSec%3600)/60);
+      document.getElementById('manualSec').value = totalSec%60;
+      document.getElementById('manualDate').value = editLog.date || todayStr();
+      document.getElementById('manualNote').value = editLog.note || '';
+      document.getElementById('manualModalTitle').textContent = '기록 수정';
+      document.getElementById('manualModalDesc').textContent = '기존 기록의 내용을 수정합니다. 저장하면 스프레드시트에도 반영됩니다.';
+      document.getElementById('manualSaveBtn').textContent = '수정';
+    } else {
+      onMidChange('manual');
+      document.getElementById('manualMonth').value = currentMonthStr();
+      document.getElementById('manualRound').value = '1';
+      document.getElementById('manualDate').value = todayStr();
+      document.getElementById('manualHour').value = 0;
+      document.getElementById('manualMin').value = 0;
+      document.getElementById('manualSec').value = 0;
+      document.getElementById('manualNote').value = '';
+      document.getElementById('manualModalTitle').textContent = '기록 직접 추가';
+      document.getElementById('manualModalDesc').textContent = '타이머 없이 공수 기록을 직접 추가합니다. 관리자 전용 기능입니다.';
+      document.getElementById('manualSaveBtn').textContent = '추가';
+    }
     document.getElementById('manualModal').classList.add('show');
   }
 
@@ -1233,8 +1301,11 @@
     var info = midInfo(mid);
     if(!info){ alert('중분류를 선택하세요.'); return; }
 
+    var editing = EDITING_LOG_ID;
+    var orig = editing ? LOGS.find(function(x){return x.id===editing;}) : null;
     var entry = {
-      id: uid(),
+      // 수정 모드면 원래 id를 유지해 같은 기록을 교체, 방식(타이머/직접입력)도 원본 유지
+      id: editing || uid(),
       member: document.getElementById('manualMember').value,
       month: document.getElementById('manualMonth').value || currentMonthStr(),
       round: parseInt(document.getElementById('manualRound').value, 10) || 1,
@@ -1246,7 +1317,7 @@
       minutes: Math.round(totalSeconds/60*100)/100,
       date: document.getElementById('manualDate').value || todayStr(),
       note: document.getElementById('manualNote').value || '',
-      source: 'manual'
+      source: orig ? orig.source : 'manual'
     };
 
     MANUAL_SAVING = true;
@@ -1255,27 +1326,45 @@
     saveBtn.textContent = '저장 중…';
     try{
       setSyncing(true);
-      // 서버 append(멱등) 우선, 구버전 서버면 읽기-수정-쓰기 폴백
-      var appended = await sAppend('work-logs', entry);
-      if(appended){
-        if(!LOGS.some(function(x){return x.id===entry.id;})) LOGS.push(entry);
-      } else {
-        var latestLogs = await sGet('work-logs', LOGS);
-        if(!latestLogs.some(function(x){return x.id===entry.id;})){
-          latestLogs.push(entry);
-          var ok = await sSet('work-logs', latestLogs);
-          if(!ok){ alert('저장에 실패했습니다. 네트워크 확인 후 다시 시도해주세요.'); return; }
+      if(editing){
+        // 수정: 서버에서 id 기준 1건 교체, 미지원 서버면 읽기-수정-쓰기 폴백
+        var ur = await sUpdateLog(entry);
+        if(ur){
+          if(!ur.updated){ alert('수정하려는 기록을 찾지 못했습니다. (다른 기기에서 삭제됐을 수 있음)'); return; }
+        } else {
+          var latest = await sGet('work-logs', LOGS);
+          var idx = -1;
+          for(var i=0;i<latest.length;i++){ if(latest[i] && latest[i].id===editing){ idx=i; break; } }
+          if(idx===-1){ alert('수정하려는 기록을 찾지 못했습니다. (다른 기기에서 삭제됐을 수 있음)'); return; }
+          latest[idx] = entry;
+          var uok = await sSet('work-logs', latest);
+          if(!uok){ alert('수정 저장에 실패했습니다. 네트워크 확인 후 다시 시도해주세요.'); return; }
         }
-        LOGS = latestLogs;
+        LOGS = LOGS.map(function(x){ return (x && x.id===editing) ? entry : x; });
+      } else {
+        // 추가: 서버 append(멱등) 우선, 구버전 서버면 읽기-수정-쓰기 폴백
+        var appended = await sAppend('work-logs', entry);
+        if(appended){
+          if(!LOGS.some(function(x){return x.id===entry.id;})) LOGS.push(entry);
+        } else {
+          var latestLogs = await sGet('work-logs', LOGS);
+          if(!latestLogs.some(function(x){return x.id===entry.id;})){
+            latestLogs.push(entry);
+            var ok = await sSet('work-logs', latestLogs);
+            if(!ok){ alert('저장에 실패했습니다. 네트워크 확인 후 다시 시도해주세요.'); return; }
+          }
+          LOGS = latestLogs;
+        }
       }
       document.getElementById('manualModal').classList.remove('show');
+      EDITING_LOG_ID = null;
       refreshFilterOptions();
       renderLogTable();
       renderDashboard();
     } finally {
       MANUAL_SAVING = false;
       saveBtn.disabled = false;
-      saveBtn.textContent = '추가';
+      saveBtn.textContent = editing ? '수정' : '추가';
       setSyncing(false);
     }
   }
@@ -1322,7 +1411,8 @@
         '<td class="time-cell">'+fmtDuration(l.minutes)+'</td>'+
         '<td>'+(l.source==='timer'?'타이머':'직접입력')+'</td>'+
         '<td>'+(l.note?escapeHtml(l.note):'-')+'</td>'+
-        '<td><button class="del-x" title="삭제">✕</button></td>';
+        '<td style="white-space:nowrap;"><button class="edit-x" title="수정">✏️</button><button class="del-x" title="삭제">✕</button></td>';
+      tr.querySelector('.edit-x').addEventListener('click', function(){ openManualModal(l); });
       tr.querySelector('.del-x').addEventListener('click', function(){ deleteLog(l.id); });
       tbody.appendChild(tr);
     });
@@ -1339,10 +1429,16 @@
   function deleteLog(id){
     showConfirm('기록 삭제', '이 기록을 삭제할까요? 되돌릴 수 없습니다.', async function(){
       setSyncing(true);
-      var latest = await sGet('work-logs', LOGS);
-      latest = latest.filter(function(x){return x.id!==id;});
-      await sSet('work-logs', latest);
-      LOGS = latest;
+      // 서버에서 id 기준 1건 삭제, 미지원 서버면 읽기-수정-쓰기 폴백
+      var dr = await sDeleteLog(id);
+      if(dr){
+        LOGS = LOGS.filter(function(x){return x.id!==id;});
+      } else {
+        var latest = await sGet('work-logs', LOGS);
+        latest = latest.filter(function(x){return x.id!==id;});
+        await sSet('work-logs', latest);
+        LOGS = latest;
+      }
       setSyncing(false);
       refreshFilterOptions();
       renderLogTable();
@@ -1631,6 +1727,7 @@
     document.getElementById('stopSaveBtn').addEventListener('click', confirmStopSave);
     document.getElementById('manualCancelBtn').addEventListener('click', function(){
       document.getElementById('manualModal').classList.remove('show');
+      EDITING_LOG_ID = null;
     });
     document.getElementById('manualSaveBtn').addEventListener('click', confirmManualSave);
     document.getElementById('confirmCancelBtn').addEventListener('click', function(){

@@ -18,6 +18,11 @@
  *   ?action=remove-timer&id=...       → { ok: true, removed: true|false, timers: [...] }
  *       active-timers에서 해당 id를 제거한다. (타이머 종료 저장/취소용)
  *
+ * 미러 시트 '공수로그':
+ *   work-logs가 바뀔 때마다 로그를 "한 행 = 기록 1건" 표 형태로 자동 반영한다.
+ *   Looker Studio 등 BI 도구 연결용이며 조회 전용 — 이 시트를 직접 수정해도
+ *   앱 데이터(work-logs JSON)에는 반영되지 않고, 다음 갱신 때 덮어써진다.
+ *
  * 배포: 스크립트 편집기에서 코드 교체 후 "배포 > 배포 관리 > 연필 아이콘 > 새 버전"으로
  * 재배포해야 기존 URL이 유지된다. (새 배포를 만들면 URL이 바뀌므로 주의)
  */
@@ -33,6 +38,7 @@ function doGet(e) {
     } else if (action === 'set') {
       out = withLock_(function () {
         setValue_(key, e.parameter.value);
+        if (key === 'work-logs') rebuildMirror_(e.parameter.value);
         return { key: key, ok: true };
       });
     } else if (action === 'append') {
@@ -46,6 +52,14 @@ function doGet(e) {
     } else if (action === 'remove-timer') {
       out = withLock_(function () {
         return removeTimer_(e.parameter.id);
+      });
+    } else if (action === 'update-log') {
+      out = withLock_(function () {
+        return updateLog_(e.parameter.value);
+      });
+    } else if (action === 'delete-log') {
+      out = withLock_(function () {
+        return deleteLog_(e.parameter.id);
       });
     } else {
       out = { error: 'unknown action: ' + action };
@@ -167,6 +181,92 @@ function appendItem_(key, itemJson) {
   if (!exists) {
     arr.push(item);
     setValue_(key, JSON.stringify(arr));
+    if (key === 'work-logs') mirrorAppend_(item);
   }
   return { key: key, ok: true, appended: !exists };
+}
+
+/** 로그 1건을 id 기준으로 교체 (관리자 수정용). 전체 배열을 URL로 보내지 않아 로그가 많아져도 안전 */
+function updateLog_(entryJson) {
+  var entry = JSON.parse(entryJson);
+  if (!entry || !entry.id) return { ok: false, error: 'entry id required' };
+  var arr = readArray_('work-logs');
+  if (arr === null) return { ok: false, error: 'work-logs is not an array' };
+  var found = false;
+  for (var i = 0; i < arr.length; i++) {
+    if (arr[i] && arr[i].id === entry.id) { arr[i] = entry; found = true; break; }
+  }
+  if (found) {
+    var json = JSON.stringify(arr);
+    setValue_('work-logs', json);
+    rebuildMirror_(json);
+  }
+  return { ok: true, updated: found };
+}
+
+/** 로그 1건을 id 기준으로 삭제 */
+function deleteLog_(id) {
+  var arr = readArray_('work-logs');
+  if (arr === null) return { ok: false, error: 'work-logs is not an array' };
+  var next = arr.filter(function (x) { return x && x.id !== id; });
+  var deleted = next.length !== arr.length;
+  if (deleted) {
+    var json = JSON.stringify(next);
+    setValue_('work-logs', json);
+    rebuildMirror_(json);
+  }
+  return { ok: true, deleted: deleted };
+}
+
+/* ---------------- 미러 시트 (Looker Studio 연결용) ---------------- */
+var MIRROR_SHEET_NAME = '공수로그';
+var MIRROR_HEADER = ['날짜', '담당자', '월', '차수', '차종', '구분', '중분류', '소분류', '작업단계', '소요시간(분)', '방식', '비고', 'id'];
+
+function mirrorSheet_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var s = ss.getSheetByName(MIRROR_SHEET_NAME);
+  if (!s) {
+    s = ss.insertSheet(MIRROR_SHEET_NAME);
+    s.getRange(1, 1, 1, MIRROR_HEADER.length).setValues([MIRROR_HEADER]).setFontWeight('bold');
+  }
+  return s;
+}
+
+function groupLabel_(g) {
+  if (g === 'verify') return '검증수행';
+  if (g === 'pm') return 'PM업무';
+  return '환경설정';
+}
+
+function logToRow_(e) {
+  return [
+    e.date || '', e.member || '', e.month || '', (e.round || 1) + '차', e.vehicle || '',
+    groupLabel_(e.group), e.mid || '', e.sub || '', e.stage || '',
+    e.minutes || 0, e.source === 'timer' ? '타이머' : '직접입력', e.note || '', e.id || ''
+  ];
+}
+
+function mirrorAppend_(item) {
+  try {
+    mirrorSheet_().appendRow(logToRow_(item));
+  } catch (err) {
+    // 미러 실패가 본 저장을 막으면 안 되므로 삼킨다 (원본 work-logs가 항상 기준)
+  }
+}
+
+/** work-logs 전체 교체(set) 시 미러 시트를 원본과 일치하게 재작성 */
+function rebuildMirror_(logsJson) {
+  try {
+    var logs = JSON.parse(logsJson);
+    if (Object.prototype.toString.call(logs) !== '[object Array]') return;
+    var s = mirrorSheet_();
+    var last = s.getLastRow();
+    if (last > 1) s.getRange(2, 1, last - 1, MIRROR_HEADER.length).clearContent();
+    if (logs.length) {
+      var rows = logs.map(logToRow_);
+      s.getRange(2, 1, rows.length, MIRROR_HEADER.length).setValues(rows);
+    }
+  } catch (err) {
+    // 미러 실패가 본 저장을 막으면 안 되므로 삼킨다
+  }
 }
