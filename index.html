@@ -201,6 +201,7 @@
   .tag-edited{background:var(--warn-soft);color:#A64500;}
   .tag-manualentry{background:#F1EBF7;color:#5C3D82;}
   .tag-unknown{background:var(--panel-alt);color:var(--ink-faint);}
+  .measured-note{margin-top:4px;font-size:10.5px;color:var(--ink-faint);font-family:var(--sans);white-space:nowrap;}
   .time-cell{font-family:var(--sans);font-variant-numeric:tabular-nums;font-weight:600;}
   .table-wrap{max-height:520px;overflow:auto;border:1px solid var(--line);border-radius:var(--r-lg);}
   .del-x{background:transparent;border:none;color:var(--ink-faint);cursor:pointer;font-size:14px;padding:2px 6px;border-radius:8px;}
@@ -668,7 +669,7 @@
       <input type="date" id="stopDate" />
     </div>
     <div class="field">
-      <label>비고 (선택)</label>
+      <label id="stopNoteLabel">비고 (선택)</label>
       <textarea id="stopNote" placeholder="특이사항이 있으면 기록하세요"></textarea>
     </div>
     <div class="modal-actions">
@@ -726,8 +727,8 @@
       <input type="date" id="manualDate" />
     </div>
     <div class="field">
-      <label>비고 (선택)</label>
-      <textarea id="manualNote" placeholder="특이사항이 있으면 기록하세요"></textarea>
+      <label>사유 (필수) — 왜 직접 입력/수정하는지 적어주세요</label>
+      <textarea id="manualNote" placeholder="예: 타이머 시작을 깜빡해서 직접 입력함"></textarea>
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" id="manualCancelBtn">취소</button>
@@ -1395,6 +1396,21 @@
     document.getElementById('stopModalDesc').textContent =
       t.member+' · '+t.vehicle+' · '+(relInfoS?relInfoS.name:t.month)+' · '+t.mid+' — '+t.sub+(t.stage?(' · '+t.stage):'')+' 항목을 저장합니다. 필요하면 시간을 보정하세요.';
     document.getElementById('stopModal').classList.add('show');
+    updateStopNoteRequirement();
+  }
+
+  // 측정값을 그대로 저장하면 '자동측정'이라 비고는 선택이지만, 시간을 직접 고치면 '수정됨'이 되므로
+  // 사유를 필수로 바꿔서 왜 고쳤는지 남기게 한다 — 측정 후 조용히 값을 바꿔버리는 걸 막기 위함
+  function isStopTimeEdited(){
+    var h = parseInt(document.getElementById('stopHour').value||'0',10);
+    var m = parseInt(document.getElementById('stopMin').value||'0',10);
+    var s = parseInt(document.getElementById('stopSec').value||'0',10);
+    var minutes = Math.round((h*3600+m*60+s)/60*100)/100;
+    return STOP_MEASURED_MINUTES!=null && Math.abs(minutes-STOP_MEASURED_MINUTES)>=0.02;
+  }
+  function updateStopNoteRequirement(){
+    var edited = isStopTimeEdited();
+    document.getElementById('stopNoteLabel').textContent = edited ? '사유 (필수) — 측정값을 직접 고쳤습니다' : '비고 (선택)';
   }
 
   var STOP_SAVING = false;
@@ -1409,7 +1425,13 @@
     if(totalSeconds<=0){ alert('소요시간은 0보다 커야 합니다.'); return; }
     var minutes = Math.round(totalSeconds/60*100)/100;
     var date = document.getElementById('stopDate').value || todayStr();
-    var note = document.getElementById('stopNote').value || '';
+    var noteEl = document.getElementById('stopNote');
+    var note = noteEl.value || '';
+    if(isStopTimeEdited() && !note.trim()){
+      alert('측정값을 직접 고치셨네요. 왜 고쳤는지 비고에 사유를 적어주세요.');
+      noteEl.focus();
+      return;
+    }
 
     // 신뢰도 판정: 종료 팝업이 자동으로 채운 값과 실제 저장값이 다르면 수동 보정된 것
     // (반올림 오차 방지용 허용오차 0.02분 ≈ 1.2초)
@@ -1606,6 +1628,12 @@
     if(!releaseId){ alert('배포 건을 선택하세요.'); return; }
     var rel = releaseById(releaseId);
     if(!rel){ alert('선택한 배포 건을 찾을 수 없습니다. 목록을 새로고침해주세요.'); return; }
+    var manualNoteEl = document.getElementById('manualNote');
+    if(!manualNoteEl.value.trim()){
+      alert('직접 입력/수정하는 사유를 적어주세요. (측정값 없이 기록되므로 나중에 확인할 수 있어야 합니다)');
+      manualNoteEl.focus();
+      return;
+    }
 
     var editing = EDITING_LOG_ID;
     var orig = editing ? LOGS.find(function(x){return x.id===editing;}) : null;
@@ -1725,6 +1753,11 @@
                    : checkVal==='수정됨' ? '<span class="tag tag-edited">수정됨</span>'
                    : checkVal==='수동입력' ? '<span class="tag tag-manualentry">수동입력</span>'
                    : '<span class="tag tag-unknown">확인불가</span>';
+      // '수정됨'인데 실제 측정값이 남아있으면 "측정 X → 저장 Y"를 바로 보여줘서
+      // 몇 컬럼씩 눈으로 대조하지 않아도 얼마나 고쳐졌는지 바로 알 수 있게 한다
+      var measuredNote = (checkVal==='수정됨' && l.measuredMinutes!=null)
+        ? '<div class="measured-note">측정 '+fmtDuration(l.measuredMinutes)+' → 저장 '+fmtDuration(l.minutes)+'</div>'
+        : '';
       // 배포 건은 이름을 저장해두지 않고 id로 매번 조회 — 배포 건 이름이 바뀌면 로그 표시도 자동으로 따라간다
       var releaseCell;
       if(l.releaseId){
@@ -1744,7 +1777,7 @@
         '<td>'+(l.stage||'-')+'</td>'+
         '<td class="time-cell">'+fmtDuration(l.minutes)+'</td>'+
         '<td>'+(l.source==='timer'?'타이머':'직접입력')+'</td>'+
-        '<td>'+checkTag+'</td>'+
+        '<td>'+checkTag+measuredNote+'</td>'+
         '<td>'+(l.note?escapeHtml(l.note):'-')+'</td>'+
         '<td style="white-space:nowrap;"><button class="edit-x" title="수정">✏️</button><button class="del-x" title="삭제">✕</button></td>';
       tr.querySelector('.edit-x').addEventListener('click', function(){ openManualModal(l); });
@@ -2488,6 +2521,9 @@
       pendingStopId = null;
     });
     document.getElementById('stopSaveBtn').addEventListener('click', confirmStopSave);
+    ['stopHour','stopMin','stopSec'].forEach(function(id){
+      document.getElementById(id).addEventListener('input', updateStopNoteRequirement);
+    });
     document.getElementById('manualCancelBtn').addEventListener('click', function(){
       document.getElementById('manualModal').classList.remove('show');
       EDITING_LOG_ID = null;
