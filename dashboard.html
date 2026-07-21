@@ -13,7 +13,7 @@
      Inter 폰트는 사내망 CDN 차단 이력이 있어 외부 로드하지 않고 시스템 폰트로 대체
      (San Francisco/Segoe UI가 유사한 그로테스크 성격), 한글 표시를 위해 맑은 고딕 등 추가.
      차트 색은 Notion 스티커 팔레트 원본 값을 dataviz 스킬 검증 스크립트로 통과시킨
-     버전(채도 미세 보정) — 카테고리=차종 식별, 파랑 1색 램프=차수 순서, 역할색=구분. -->
+     버전(채도 미세 보정) — 카테고리=차종 식별, 역할색=구분/배포 유형(공식·정기펌웨어). -->
 <script src="chart.js"></script>
 <style>
   :root{
@@ -121,7 +121,7 @@
     <div class="field"><label>담당자</label><select id="fMember"><option value="all">전체</option></select></div>
     <div class="field"><label>월</label><select id="fMonth"><option value="all">전체</option></select></div>
     <div class="field"><label>차종</label><select id="fVehicle"><option value="all">전체</option></select></div>
-    <div class="field"><label>차수</label><select id="fRound"><option value="all">전체</option></select></div>
+    <div class="field"><label>배포 건</label><select id="fRelease"><option value="all">전체</option></select></div>
     <div class="field"><label>구분</label><select id="fGroup">
       <option value="all">전체</option>
       <option value="verify">검증 수행</option>
@@ -142,7 +142,7 @@
     <div class="section-label"><span class="badge-pill">담당자 · 차종</span></div>
     <div class="grid">
       <div class="card"><h2><span class="swatch" style="background:var(--sticker-blue);"></span>인당 총공수 (시간)</h2><div class="chart-wrap"><canvas id="chartByMember"></canvas></div></div>
-      <div class="card"><h2><span class="swatch" style="background:var(--sticker-blue);"></span>차종별 총공수 — 차수별 구성 (시간)</h2><div class="chart-wrap"><canvas id="chartByVehicle"></canvas></div></div>
+      <div class="card"><h2><span class="swatch" style="background:var(--sticker-blue);"></span>차종별 총공수 — 배포 유형별 구성 (시간)</h2><div class="chart-wrap"><canvas id="chartByVehicle"></canvas></div></div>
     </div>
   </div>
 
@@ -173,9 +173,9 @@
   // design/DESIGN-notion.md의 스티커 팔레트를 dataviz 스킬 검증 스크립트로 통과시킨 버전
   // (원본 대비 teal만 #2a9d99→#0e9c96로 채도 미세 보정 — 색약 안전성 채도 하한 통과 목적)
   var CAT = ['#0075de','#dd5b00','#0e9c96','#ff64c8','#1aae39','#7b5aa6']; // blue,orange,teal,pink,green,purple
-  // 차수 순차 램프 — 브랜드의 primary/primary-active/sky 토큰을 그대로 활용 (연→진)
-  var ROUND_RAMP = ['#8fc3f2','#62aef0','#0075de','#0060b8','#005bab']; // 1~5차
   var ROLE = { verify:'#0075de', env:'#7b5aa6', pm:'#1aae39', normal:'#0075de', issue:'#dd5b00' };
+  var TYPE_ORDER = ['공식펌웨어','정기펌웨어'];
+  var TYPE_COLOR = { '공식펌웨어': CAT[0], '정기펌웨어': CAT[5] };
   var INK_MUTED = '#615d59';
   var GRID = '#e6e6e6';
   var SURFACE = '#ffffff';
@@ -183,7 +183,20 @@
   var LOGS = [];
   var MEMBERS = [];
   var VEHICLES = [];
+  var RELEASES = [];
   var charts = {};
+
+  function releaseById(id){
+    return RELEASES.find(function(r){ return r.id===id; }) || null;
+  }
+  /** 로그 1건이 속한 배포 유형(공식/정기펌웨어). 배포 건이 없거나 삭제됐으면 '미지정' */
+  function releaseTypeOf(l){
+    if(l.releaseId){
+      var rel = releaseById(l.releaseId);
+      if(rel) return rel.type;
+    }
+    return '미지정';
+  }
 
   async function sGet(key, fallback){
     try{
@@ -205,7 +218,6 @@
     return Object.keys(s).sort();
   }
   function fmtHours(min){ return (Math.round(min/6)/10).toString(); }
-  function roundColor(roundNum){ return ROUND_RAMP[Math.min(Math.max((roundNum||1)-1,0), ROUND_RAMP.length-1)]; }
 
   function fillFilter(id, options){
     var sel = document.getElementById(id);
@@ -219,26 +231,48 @@
     sel.value = (prev && Array.prototype.some.call(sel.options, function(op){return op.value===prev;})) ? prev : 'all';
   }
 
+  function fillReleaseFilter(){
+    var sel = document.getElementById('fRelease');
+    var prev = sel.value;
+    sel.innerHTML = '';
+    var allOpt = document.createElement('option');
+    allOpt.value = 'all'; allOpt.textContent = '전체';
+    sel.appendChild(allOpt);
+    RELEASES.slice().sort(function(a,b){ return (b.createdAt||'').localeCompare(a.createdAt||''); }).forEach(function(r){
+      var opt = document.createElement('option');
+      opt.value = r.id; opt.textContent = r.name;
+      sel.appendChild(opt);
+    });
+    var unassignedOpt = document.createElement('option');
+    unassignedOpt.value = '__unassigned__'; unassignedOpt.textContent = '(배포 건 미지정)';
+    sel.appendChild(unassignedOpt);
+    var valid = prev==='all' || prev==='__unassigned__' || RELEASES.some(function(r){return r.id===prev;});
+    sel.value = valid ? prev : 'all';
+  }
+
   function refreshFilters(){
     fillFilter('fMember', MEMBERS.length ? MEMBERS : uniqueSorted(LOGS.map(function(l){return l.member;})));
     fillFilter('fMonth', uniqueSorted(LOGS.map(function(l){return l.month;})));
-    fillFilter('fRound', uniqueSorted(LOGS.map(function(l){return (l.round||1)+'차';})));
     fillFilter('fVehicle', VEHICLES.length ? VEHICLES : uniqueSorted(LOGS.map(function(l){return l.vehicle;})));
+    fillReleaseFilter();
     // fGroup은 고정 옵션이라 재구성하지 않음
   }
 
   function filteredLogs(){
     var member = document.getElementById('fMember').value;
     var month = document.getElementById('fMonth').value;
-    var round = document.getElementById('fRound').value;
+    var releaseFilter = document.getElementById('fRelease').value;
     var vehicle = document.getElementById('fVehicle').value;
     var group = document.getElementById('fGroup').value;
     return LOGS.filter(function(l){
       if(member!=='all' && l.member!==member) return false;
       if(month!=='all' && l.month!==month) return false;
-      if(round!=='all' && ((l.round||1)+'차')!==round) return false;
       if(vehicle!=='all' && l.vehicle!==vehicle) return false;
       if(group!=='all' && l.group!==group) return false;
+      if(releaseFilter!=='all'){
+        if(releaseFilter==='__unassigned__'){ if(l.releaseId) return false; }
+        else if(l.releaseId!==releaseFilter) return false;
+      }
       return true;
     });
   }
@@ -289,17 +323,20 @@
       options: baseChartOptions({ plugins:{ legend:{display:false} } })
     });
 
-    // 차종별 총공수 — 차종=x축(항목), 차수=파랑 순차 램프로 누적. 세그먼트 사이 2px 서피스 갭
-    var roundNums = uniqueSorted(rows.map(function(l){return String(l.round||1);})).map(Number).sort(function(a,b){return a-b;});
-    if(!roundNums.length) roundNums = [1];
-    var vehicleDatasets = roundNums.map(function(rn){
+    // 차종별 총공수 — 차종=x축(항목), 배포 유형(공식/정기펌웨어)별로 누적. 세그먼트 사이 2px 서피스 갭
+    var typesPresent = uniqueSorted(rows.map(releaseTypeOf)).sort(function(a,b){
+      var ia = TYPE_ORDER.indexOf(a); if(ia===-1) ia = 99;
+      var ib = TYPE_ORDER.indexOf(b); if(ib===-1) ib = 99;
+      return ia-ib;
+    });
+    var vehicleDatasets = typesPresent.map(function(t){
       return barSpec({
-        label: rn+'차',
+        label: t,
         data: vehicles.map(function(v){
-          return Math.round(rows.filter(function(l){return l.vehicle===v && (l.round||1)===rn;})
+          return Math.round(rows.filter(function(l){return l.vehicle===v && releaseTypeOf(l)===t;})
             .reduce(function(s,l){return s+l.minutes;},0)/6)/10;
         }),
-        backgroundColor: roundColor(rn),
+        backgroundColor: TYPE_COLOR[t] || '#A39E98',
         borderColor: SURFACE,
         borderWidth: 2
       });
@@ -381,21 +418,23 @@
 
   async function load(){
     setSyncing(true);
-    var [m, v, l] = await Promise.all([
+    var [m, v, l, rel] = await Promise.all([
       sGet('meta-members', []),
       sGet('meta-vehicles', []),
-      sGet('work-logs', [])
+      sGet('work-logs', []),
+      sGet('meta-releases', [])
     ]);
     MEMBERS = m || [];
     VEHICLES = v || [];
     LOGS = l || [];
+    RELEASES = rel || [];
     setSyncing(false);
     refreshFilters();
     render();
   }
 
   document.addEventListener('DOMContentLoaded', function(){
-    ['fMember','fMonth','fRound','fVehicle','fGroup'].forEach(function(id){
+    ['fMember','fMonth','fRelease','fVehicle','fGroup'].forEach(function(id){
       document.getElementById(id).addEventListener('change', render);
     });
     load();

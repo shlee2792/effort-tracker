@@ -17,6 +17,11 @@
  *       읽기+중복검사+쓰기를 서버에서 한 번에 처리하므로 클라이언트 왕복이 1회로 줄어든다.
  *   ?action=remove-timer&id=...       → { ok: true, removed: true|false, timers: [...] }
  *       active-timers에서 해당 id를 제거한다. (타이머 종료 저장/취소용)
+ *   ?action=register-release&value=... → { ok: true, release: {...}, releases: [...] }
+ *       value는 { month, type, label?, vehicles, applicableMids, createdBy? } 형태의 JSON.
+ *       같은 month+type 조합 내 등록 순번(seq)을 서버에서 계산해 이름을 자동 생성한다
+ *       (예: "2026-07 정기펌웨어 2차 등록 (VCU 이슈 대응)"). LockService로 직렬화하므로
+ *       PM/관리자가 동시에 등록해도 순번이 겹치지 않는다. meta-releases 배열에 append.
  *
  * 미러 시트 '공수로그':
  *   work-logs가 바뀔 때마다 로그를 "한 행 = 기록 1건" 표 형태로 자동 반영한다.
@@ -61,6 +66,10 @@ function doGet(e) {
       out = withLock_(function () {
         return deleteLog_(e.parameter.id);
       });
+    } else if (action === 'register-release') {
+      out = withLock_(function () {
+        return registerRelease_(e.parameter.value);
+      });
     } else {
       out = { error: 'unknown action: ' + action };
     }
@@ -84,7 +93,7 @@ function withLock_(fn) {
 
 // 실제 key-value 데이터가 들어 있는 시트를 식별하는 단서:
 // A열에 'key' 헤더 또는 앱이 쓰는 키가 존재하는 시트
-var KNOWN_KEYS = ['key', 'work-logs', 'active-timers', 'meta-members', 'meta-vehicles', 'meta-admin-pin'];
+var KNOWN_KEYS = ['key', 'work-logs', 'active-timers', 'meta-members', 'meta-vehicles', 'meta-admin-pin', 'meta-releases', 'meta-categories', 'meta-pm-pin'];
 var SHEET_CACHE = null;
 
 function sheet_() {
@@ -152,7 +161,7 @@ function startTimer_(timerJson) {
     if (x.id === t.id) return true;
     return x.member === t.member && x.vehicle === t.vehicle && x.mid === t.mid &&
            x.sub === t.sub && (x.stage || null) === (t.stage || null) &&
-           (x.round || 1) === (t.round || 1);
+           (x.releaseId || null) === (t.releaseId || null);
   });
   if (!dup) {
     arr.push(t);
@@ -216,6 +225,45 @@ function deleteLog_(id) {
     rebuildMirror_(json);
   }
   return { ok: true, deleted: deleted };
+}
+
+/* ---------------- 배포 건(펌웨어 배포) 등록 ---------------- */
+
+/**
+ * 배포 건 신규 등록. 같은 month+type 조합의 기존 등록 건수를 세어 seq를 매기고,
+ * "{month} {type} {seq}차 등록 (label)" 형태로 이름을 자동 생성한다.
+ * LockService로 감싸져 있어 동시 등록 시에도 seq가 겹치지 않는다.
+ */
+function registerRelease_(payloadJson) {
+  var payload = JSON.parse(payloadJson);
+  if (!payload || !payload.month || !payload.type) {
+    return { ok: false, error: 'month/type required' };
+  }
+  var releases = readArray_('meta-releases');
+  if (releases === null) return { ok: false, error: 'meta-releases is not an array' };
+
+  var seq = releases.filter(function (r) {
+    return r && r.month === payload.month && r.type === payload.type;
+  }).length + 1;
+
+  var label = (payload.label || '').trim();
+  var name = payload.month + ' ' + payload.type + ' ' + seq + '차 등록' + (label ? ' (' + label + ')' : '');
+
+  var release = {
+    id: 'rel-' + Utilities.getUuid(),
+    name: name,
+    month: payload.month,
+    type: payload.type,
+    seq: seq,
+    label: label,
+    vehicles: payload.vehicles || [],
+    applicableMids: payload.applicableMids || [],
+    createdAt: new Date().toISOString(),
+    createdBy: payload.createdBy || ''
+  };
+  releases.push(release);
+  setValue_('meta-releases', JSON.stringify(releases));
+  return { ok: true, release: release, releases: releases };
 }
 
 /* ---------------- 미러 시트 (Looker Studio 연결용) ---------------- */

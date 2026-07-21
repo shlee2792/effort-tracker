@@ -231,6 +231,15 @@
   .cat-block-head input{flex:2;}
   .cat-block-head select{flex:1;}
   .cat-subs{margin-left:4px;padding-left:12px;border-left:2px solid var(--line);}
+
+  /* 배포 관리 — 차종별 적용 항목 탭 (모바일에서 세로 스크롤 대신 탭 전환) */
+  .rel-vehicle-tabs{display:none;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+  .rel-vehicle-tab-btn{
+    border:1px solid var(--line);background:var(--panel);color:var(--ink-soft);
+    padding:8px 14px;border-radius:var(--r-full);font-size:13px;font-weight:600;
+    font-family:var(--sans);cursor:pointer;white-space:nowrap;
+  }
+  .rel-vehicle-tab-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
   .cat-sub-row{display:flex;gap:8px;align-items:center;margin-bottom:6px;}
   .cat-sub-row input{flex:1;}
 
@@ -276,6 +285,7 @@
   <div class="tabbar">
     <button class="tab-btn active" data-tab="record">공수 입력</button>
     <button class="tab-btn" data-tab="dash">대시보드</button>
+    <button class="tab-btn" data-tab="release">🔒 배포 관리</button>
     <button class="tab-btn" data-tab="log">🔒 로그</button>
     <button class="tab-btn" data-tab="settings">🔒 설정</button>
   </div>
@@ -285,29 +295,19 @@
 
     <div class="card">
       <h2>기본 정보</h2>
-      <p class="card-sub">담당자 · 월 · 차종 · 배포 차수를 먼저 선택하세요. 아래 두 패널에서 공통으로 사용됩니다.</p>
-      <div class="grid-4">
+      <p class="card-sub">담당자 · 배포 건 · 차종을 먼저 선택하세요. 아래 두 패널에서 공통으로 사용됩니다.</p>
+      <div class="grid-3">
         <div class="field">
           <label>담당자</label>
           <select id="ctxMember"></select>
         </div>
         <div class="field">
-          <label>월</label>
-          <input type="month" id="ctxMonth" />
+          <label>배포 건</label>
+          <select id="ctxRelease"></select>
         </div>
         <div class="field">
           <label>차종</label>
           <select id="ctxVehicle"></select>
-        </div>
-        <div class="field">
-          <label>배포 차수</label>
-          <select id="ctxRound">
-            <option value="1">1차</option>
-            <option value="2">2차</option>
-            <option value="3">3차</option>
-            <option value="4">4차</option>
-            <option value="5">5차</option>
-          </select>
         </div>
       </div>
     </div>
@@ -369,8 +369,8 @@
           <select id="logFilterMonth"><option value="all">전체</option></select>
         </div>
         <div class="field">
-          <label>차수</label>
-          <select id="logFilterRound"><option value="all">전체</option></select>
+          <label>배포 건</label>
+          <select id="logFilterRelease"><option value="all">전체</option></select>
         </div>
         <div class="field">
           <label>차종</label>
@@ -400,7 +400,7 @@
         <table>
           <thead>
             <tr>
-              <th>날짜</th><th>담당자</th><th>월</th><th>차수</th><th>차종</th><th>중분류</th><th>소분류</th>
+              <th>날짜</th><th>담당자</th><th>월</th><th>배포 건</th><th>차종</th><th>중분류</th><th>소분류</th>
               <th>작업 단계</th><th>시간</th><th>방식</th><th>확인</th><th>비고</th><th></th>
             </tr>
           </thead>
@@ -427,8 +427,8 @@
         <select id="dashFilterVehicle"><option value="all">전체</option></select>
       </div>
       <div class="field">
-        <label>차수</label>
-        <select id="dashFilterRound"><option value="all">전체</option></select>
+        <label>배포 건</label>
+        <select id="dashFilterRelease"><option value="all">전체</option></select>
       </div>
     </div>
 
@@ -450,7 +450,7 @@
           <div class="chart-wrap"><canvas id="chartByMember"></canvas></div>
         </div>
         <div class="card">
-          <h2>차종별 총공수 — 차수별 구성</h2>
+          <h2>차종별 총공수 — 배포 유형별 구성</h2>
           <div class="chart-wrap"><canvas id="chartByVehicle"></canvas></div>
         </div>
       </div>
@@ -550,12 +550,95 @@
     </div>
 
     <div class="card">
+      <h2>PM 비밀번호 설정</h2>
+      <p class="card-sub">PM에게 공유하는 별도 비밀번호입니다. 이 비밀번호로는 "배포 관리" 탭만 열리고, 로그·설정 탭에는 접근할 수 없습니다.</p>
+      <div class="field field-row">
+        <div>
+          <label>새 PM 비밀번호</label>
+          <input type="password" id="newPmPinInput" placeholder="새 비밀번호" />
+        </div>
+        <div>
+          <label>새 비밀번호 확인</label>
+          <input type="password" id="newPmPinConfirm" placeholder="다시 입력" />
+        </div>
+      </div>
+      <button class="btn btn-primary" id="savePmPinBtn">PM 비밀번호 변경</button>
+    </div>
+
+    <div class="card">
       <h2 style="color:var(--danger);">데이터 초기화</h2>
       <p class="card-sub">모든 담당자의 기록이 삭제됩니다. 되돌릴 수 없으니 신중하게 사용하세요.</p>
       <button class="btn btn-danger" id="resetDataBtn">전체 기록 삭제</button>
     </div>
 
     <p class="small-note">※ 이 도구의 데이터는 연결된 Google 시트에 저장되어 팀원 전체(및 이 웹앱 링크를 아는 모든 사람)에게 공개됩니다. 로그·설정 탭은 화면 단에서 비밀번호로 접근이 제한되지만, 페이지 소스에 포함된 데이터 저장용 API 주소 자체를 알아내면 이 잠금을 우회할 수 있습니다. 민감한 정보는 입력하지 마세요.</p>
+    </div>
+  </div>
+
+  <!-- ===================== 배포 관리 ===================== -->
+  <div class="tab-panel" id="tab-release">
+
+    <div class="card lock-gate" id="releaseLockGate">
+      <div class="lock-gate-inner">
+        <div class="lock-icon">🔒</div>
+        <h2>배포 관리 (PM/관리자 전용)</h2>
+        <p class="card-sub">PM 비밀번호 또는 관리자 비밀번호를 입력하세요.</p>
+        <input type="password" id="releasePinInput" placeholder="비밀번호" />
+        <button class="btn btn-primary btn-block" id="releasePinBtn" style="margin-top:10px;">확인</button>
+        <p class="lock-error" id="releasePinError"></p>
+      </div>
+    </div>
+
+    <div id="releaseContent" class="hidden">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+      <button class="btn btn-secondary btn-sm" id="releaseRelockBtn">🔒 다시 잠그기</button>
+    </div>
+
+    <div class="card">
+      <h2 id="releaseFormTitle">배포 건 등록</h2>
+      <p class="card-sub">고객사로부터 새 펌웨어를 전달받으면 여기서 등록하세요. 이름은 월·유형 기준으로 자동 생성됩니다.</p>
+      <div class="grid-2">
+        <div class="field">
+          <label>월</label>
+          <input type="month" id="relMonth" />
+        </div>
+        <div class="field">
+          <label>유형</label>
+          <select id="relType">
+            <option value="공식펌웨어">공식펌웨어</option>
+            <option value="정기펌웨어">정기펌웨어</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>설명 (선택)</label>
+        <input type="text" id="relLabel" placeholder="예: VCU 이슈 대응" />
+      </div>
+      <div class="field">
+        <label>대상 차종</label>
+        <div id="relVehicleChecks"></div>
+      </div>
+      <div class="field">
+        <label>차종별 적용 업무 항목</label>
+        <p class="hint" style="margin-top:0;margin-bottom:8px;">차종을 선택하면 탭이 생깁니다. 탭을 눌러 차종을 전환하며 적용 항목을 고르세요 — 차종마다 검증·환경설정 항목을 다르게 가져갈 수 있습니다. 환경설정 항목은 기본 체크, 중분류를 체크하면 소분류가 전체 선택된 상태로 펼쳐집니다. (PM 업무는 배포 건과 무관하게 항상 선택 가능해 목록에서 제외됩니다.)</p>
+        <div id="relVehicleTabs" class="rel-vehicle-tabs"></div>
+        <div id="relVehicleMidSections"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="releaseFormCancelBtn" style="display:none;">수정 취소</button>
+        <button class="btn btn-primary btn-block" id="registerReleaseBtn">배포 건 등록</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>등록된 배포 건</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>이름</th><th>월</th><th>유형</th><th>차종</th><th>적용 항목</th><th></th></tr></thead>
+          <tbody id="releaseTableBody"></tbody>
+        </table>
+      </div>
+    </div>
     </div>
   </div>
 
@@ -605,22 +688,12 @@
       <select id="manualMember"></select>
     </div>
     <div class="field">
-      <label>월</label>
-      <input type="month" id="manualMonth" />
+      <label>배포 건</label>
+      <select id="manualRelease"></select>
     </div>
     <div class="field">
       <label>차종</label>
       <select id="manualVehicle"></select>
-    </div>
-    <div class="field">
-      <label>배포 차수</label>
-      <select id="manualRound">
-        <option value="1">1차</option>
-        <option value="2">2차</option>
-        <option value="3">3차</option>
-        <option value="4">4차</option>
-        <option value="5">5차</option>
-      </select>
     </div>
     <div class="field">
       <label>중분류</label>
@@ -693,15 +766,13 @@
   ];
 
   // 대시보드 차트 팔레트 — dataviz 스킬의 검증된 카테고리 팔레트(CVD 안전성 확인됨).
-  // 색은 항목을 따라간다: 차종=고정 순서 색, 차수=파랑 1색조 순차 램프(순서형), 구분=고정 역할색.
+  // 색은 항목을 따라간다: 차종=고정 순서 색, 배포 유형=역할색, 구분=고정 역할색.
   // design/DESIGN-notion.md 스티커 팔레트 (dashboard.html과 동일, CVD 검증 통과 버전)
   var CHART_CAT = ['#0075de','#dd5b00','#0e9c96','#ff64c8','#1aae39','#7b5aa6']; // blue,orange,teal,pink,green,purple
-  var CHART_ROUND_RAMP = ['#8fc3f2','#62aef0','#0075de','#0060b8','#005bab']; // 1~5차, 연→진 (primary/primary-active/sky 토큰 활용)
   var CHART_ROLE = { verify:'#0075de', env:'#7b5aa6', pm:'#1aae39', normal:'#0075de', issue:'#dd5b00' };
   var CHART_INK_MUTED = '#615d59';
   var CHART_GRID = '#e6e6e6';
   var CHART_SURFACE = '#ffffff';
-  function chartRoundColor(roundNum){ return CHART_ROUND_RAMP[Math.min(Math.max((roundNum||1)-1,0), CHART_ROUND_RAMP.length-1)]; }
   // Notion의 "색면 블록" 마크: 얇은 라운드(5px)의 단색 채움, 테두리 없음
   function barSpec(extra){
     return Object.assign({ borderRadius:5, borderSkipped:false, barPercentage:0.55, categoryPercentage:0.7, borderWidth:0 }, extra||{});
@@ -722,8 +793,11 @@
   var VEHICLES = ["JG","MX5a","차종3"];
   var LOGS = [];     // {id, member, month, vehicle, mid, sub, group, stage, minutes, date, note, source}
   var TIMERS = [];   // {id, member, month, vehicle, mid, sub, group, stage, startTs, accumMs, status}
+  var RELEASES = []; // {id, name, month, type, seq, label, vehicles, applicableMids, createdAt, createdBy}
   var ADMIN_PIN = '1234';
-  var isAdminUnlocked = false; // 세션(새로고침 전까지) 동안만 유지되는 메모리 상태
+  var PM_PIN = '2580';
+  var isAdminUnlocked = false;   // 세션(새로고침 전까지) 동안만 유지되는 메모리 상태
+  var isReleaseUnlocked = false; // PM 비밀번호 또는 관리자 비밀번호로 열림
 
   var charts = {};
 
@@ -815,6 +889,18 @@
       return null;
     }
   }
+  async function sRegisterRelease(payload){
+    // 서버가 월+유형 조합의 등록 순번을 계산해 이름을 생성 (LockService로 동시등록 안전)
+    try{
+      var url = API_URL + '?action=register-release&value=' + encodeURIComponent(JSON.stringify(payload));
+      var res = await fetch(url);
+      var data = await res.json();
+      return (data && data.ok) ? data : null;
+    }catch(e){
+      console.error('register-release failed', e);
+      return null;
+    }
+  }
   function setSyncing(on){
     var dot = document.getElementById('syncDot');
     var lbl = document.getElementById('syncLabel');
@@ -858,13 +944,15 @@
   /* ---------------- init ---------------- */
   async function init(){
     setSyncing(true);
-    var [m, v, l, t, pin, cat] = await Promise.all([
+    var [m, v, l, t, pin, cat, pmPin, rel] = await Promise.all([
       sGet('meta-members', MEMBERS),
       sGet('meta-vehicles', VEHICLES),
       sGet('work-logs', []),
       sGet('active-timers', []),
       sGet('meta-admin-pin', ADMIN_PIN),
-      sGet('meta-categories', CATEGORY_TREE)
+      sGet('meta-categories', CATEGORY_TREE),
+      sGet('meta-pm-pin', PM_PIN),
+      sGet('meta-releases', [])
     ]);
     MEMBERS = (m && m.length) ? m : MEMBERS;
     VEHICLES = (v && v.length) ? v : VEHICLES;
@@ -872,25 +960,28 @@
     TIMERS = t || [];
     ADMIN_PIN = pin || ADMIN_PIN;
     CATEGORY_TREE = (cat && cat.length) ? cat : CATEGORY_TREE;
+    PM_PIN = pmPin || PM_PIN;
+    RELEASES = (rel || []).map(normalizeRelease);
     setSyncing(false);
-
-    document.getElementById('ctxMonth').value = currentMonthStr();
 
     bindTabs();
     bindRecordTab();
     bindLogTab();
     bindDashTab();
     bindSettingsTab();
+    bindReleaseTab();
     bindModals();
     bindLockGates();
     applyLockState();
 
     refreshMemberSelects();
-    refreshVehicleSelects();
-    refreshMidSelects();
+    refreshReleaseSelects();
     renderCategoryManageList();
     renderMemberSettingsList();
     renderVehicleSettingsList();
+    refreshManualReleaseSelect();
+    renderReleaseFormChecks();
+    renderReleaseTable();
 
     renderActiveTimers();
     refreshFilterOptions();
@@ -926,6 +1017,7 @@
         applyLockState();
         if(btn.dataset.tab==='dash') renderDashboard();
         if(btn.dataset.tab==='log' && isAdminUnlocked) renderLogTable();
+        if(btn.dataset.tab==='release' && (isAdminUnlocked||isReleaseUnlocked)) renderReleaseTable();
       });
     });
   }
@@ -945,21 +1037,71 @@
   function refreshMemberSelects(){
     fillSelect(document.getElementById('ctxMember'), MEMBERS, true);
   }
-  function refreshVehicleSelects(){
-    fillSelect(document.getElementById('ctxVehicle'), VEHICLES, true);
+
+  function fillReleaseSelect(sel){
+    var prev = sel.value;
+    sel.innerHTML = '';
+    var sorted = RELEASES.slice().sort(function(a,b){ return (b.createdAt||'').localeCompare(a.createdAt||''); });
+    if(!sorted.length){
+      var opt = document.createElement('option');
+      opt.value=''; opt.textContent='등록된 배포 건이 없습니다';
+      sel.appendChild(opt);
+      return;
+    }
+    sorted.forEach(function(r){
+      var opt = document.createElement('option');
+      opt.value = r.id; opt.textContent = r.name;
+      sel.appendChild(opt);
+    });
+    if(sorted.some(function(r){return r.id===prev;})) sel.value = prev;
   }
+  function refreshReleaseSelects(){
+    fillReleaseSelect(document.getElementById('ctxRelease'));
+    refreshCtxVehicleSelect();
+    refreshMidSelects();
+  }
+  function refreshCtxVehicleSelect(){
+    var rel = releaseById(document.getElementById('ctxRelease').value);
+    fillSelect(document.getElementById('ctxVehicle'), rel ? rel.vehicles.map(function(v){return v.name;}) : [], true);
+  }
+
+  /** 배포 건 + 차종이 선택한 중분류 목록 (PM 업무는 배포 건·차종과 무관하게 항상 포함) */
+  function scopedMidTree(releaseId, vehicleName){
+    var pmEntry = CATEGORY_TREE.find(function(c){ return c.group==='pm'; });
+    var rel = releaseById(releaseId);
+    var vEntry = rel ? rel.vehicles.find(function(v){ return v.name===vehicleName; }) : null;
+    var scoped = vEntry ? vEntry.applicableMids.map(function(a){
+      var full = CATEGORY_TREE.find(function(c){ return c.mid===a.mid; });
+      return { mid: a.mid, group: full ? full.group : 'env', subs: a.subs };
+    }) : [];
+    if(pmEntry) scoped.push(pmEntry);
+    return scoped;
+  }
+
   function refreshMidSelects(){
-    var mids = CATEGORY_TREE.map(function(c){ return c.mid; });
-    fillSelect(document.getElementById('timerMid'), mids, true);
+    var releaseId = document.getElementById('ctxRelease').value;
+    var vehicle = document.getElementById('ctxVehicle').value;
+    var scoped = scopedMidTree(releaseId, vehicle);
+    fillSelect(document.getElementById('timerMid'), scoped.map(function(c){return c.mid;}), true);
     onMidChange('timer');
   }
+  function refreshManualMidSelect(){
+    var releaseId = document.getElementById('manualRelease').value;
+    var vehicle = document.getElementById('manualVehicle').value;
+    var scoped = scopedMidTree(releaseId, vehicle);
+    fillSelect(document.getElementById('manualMid'), scoped.map(function(c){return c.mid;}), true);
+    onMidChange('manual');
+  }
   function onMidChange(prefix){
+    var releaseSel = (prefix==='timer' ? document.getElementById('ctxRelease') : document.getElementById('manualRelease'));
+    var vehicleSel = (prefix==='timer' ? document.getElementById('ctxVehicle') : document.getElementById('manualVehicle'));
     var midSel = document.getElementById(prefix+'Mid');
     var subSel = document.getElementById(prefix+'Sub');
     var stageField = document.getElementById(prefix+'StageField');
     var stageSel = document.getElementById(prefix+'Stage');
-    var info = midInfo(midSel.value);
-    if(!info) return;
+    var scoped = scopedMidTree(releaseSel.value, vehicleSel.value);
+    var info = scoped.find(function(c){ return c.mid===midSel.value; });
+    if(!info){ subSel.innerHTML=''; stageField.classList.add('hidden'); return; }
     fillSelect(subSel, info.subs, true);
     if(info.group === 'verify'){
       stageField.classList.remove('hidden');
@@ -971,16 +1113,13 @@
 
   function refreshFilterOptions(){
     var months = uniqueSorted(LOGS.map(function(l){return l.month;}));
-    var rounds = uniqueSorted(LOGS.map(function(l){return (l.round||1)+'차';}));
     var memberOpts = ['all'].concat(MEMBERS);
     var vehicleOpts = ['all'].concat(VEHICLES);
     var monthOpts = ['all'].concat(months);
-    var roundOpts = ['all'].concat(rounds);
 
     [['logFilterMember',memberOpts],['dashFilterMember',memberOpts],
      ['logFilterVehicle',vehicleOpts],['dashFilterVehicle',vehicleOpts],
-     ['logFilterMonth',monthOpts],['dashFilterMonth',monthOpts],
-     ['logFilterRound',roundOpts],['dashFilterRound',roundOpts]].forEach(function(pair){
+     ['logFilterMonth',monthOpts],['dashFilterMonth',monthOpts]].forEach(function(pair){
       var sel = document.getElementById(pair[0]);
       var prev = sel.value;
       sel.innerHTML='';
@@ -991,6 +1130,29 @@
       });
       if(pair[1].indexOf(prev)>-1) sel.value = prev; else sel.value='all';
     });
+
+    refreshReleaseFilter('logFilterRelease');
+    refreshReleaseFilter('dashFilterRelease');
+  }
+
+  function refreshReleaseFilter(selId){
+    var sel = document.getElementById(selId);
+    var prev = sel.value;
+    sel.innerHTML = '';
+    var allOpt = document.createElement('option');
+    allOpt.value = 'all'; allOpt.textContent = '전체';
+    sel.appendChild(allOpt);
+    RELEASES.slice().sort(function(a,b){ return (b.createdAt||'').localeCompare(a.createdAt||''); }).forEach(function(r){
+      var opt = document.createElement('option');
+      opt.value = r.id; opt.textContent = r.name;
+      sel.appendChild(opt);
+    });
+    var unassignedOpt = document.createElement('option');
+    unassignedOpt.value = '__unassigned__'; unassignedOpt.textContent = '(배포 건 미지정)';
+    sel.appendChild(unassignedOpt);
+
+    var valid = prev==='all' || prev==='__unassigned__' || RELEASES.some(function(r){return r.id===prev;});
+    sel.value = valid ? prev : 'all';
   }
   function uniqueSorted(arr){
     var s = {}; arr.forEach(function(a){ if(a) s[a]=true; });
@@ -999,15 +1161,45 @@
 
   /* ---------------- record tab bindings ---------------- */
   function bindRecordTab(){
+    document.getElementById('ctxRelease').addEventListener('change', function(){
+      refreshCtxVehicleSelect();
+      refreshMidSelects();
+    });
+    document.getElementById('ctxVehicle').addEventListener('change', function(){ refreshMidSelects(); });
     document.getElementById('timerMid').addEventListener('change', function(){ onMidChange('timer'); });
     document.getElementById('startTimerBtn').addEventListener('click', startTimer);
+  }
+
+  function releaseById(id){
+    return RELEASES.find(function(r){ return r.id===id; }) || null;
+  }
+
+  /** 로그 1건이 속한 배포 유형(공식/정기펌웨어). 배포 건이 없거나 삭제됐으면 '미지정' */
+  function releaseTypeOf(l){
+    if(l.releaseId){
+      var rel = releaseById(l.releaseId);
+      if(rel) return rel.type;
+    }
+    return '미지정';
+  }
+
+  /** 구버전(차종 배열이 문자열+배포건 공통 적용항목) 데이터를 신버전(차종별 적용항목) 구조로 변환.
+   *  이미 신버전 구조면 그대로 통과 — 로드할 때마다 안전하게 적용 가능. */
+  function normalizeRelease(r){
+    if(r && r.vehicles && r.vehicles.length && typeof r.vehicles[0]==='string'){
+      var sharedMids = r.applicableMids || [];
+      r.vehicles = r.vehicles.map(function(vName){
+        return { name: vName, applicableMids: sharedMids.map(function(a){ return { mid:a.mid, subs:(a.subs||[]).slice() }; }) };
+      });
+    }
+    if('applicableMids' in r) delete r.applicableMids;
+    return r;
   }
 
   function currentContext(){
     return {
       member: document.getElementById('ctxMember').value,
-      month: document.getElementById('ctxMonth').value || currentMonthStr(),
-      round: parseInt(document.getElementById('ctxRound').value, 10) || 1,
+      releaseId: document.getElementById('ctxRelease').value,
       vehicle: document.getElementById('ctxVehicle').value
     };
   }
@@ -1024,18 +1216,21 @@
   function isSameTask(a, b){
     return a.member===b.member && a.vehicle===b.vehicle && a.mid===b.mid &&
            a.sub===b.sub && (a.stage||null)===(b.stage||null) &&
-           (a.round||1)===(b.round||1);
+           (a.releaseId||null)===(b.releaseId||null);
   }
 
   function startTimer(){
     var ctx = currentContext();
+    if(!ctx.releaseId){ alert('배포 건을 선택하세요.'); return; }
+    var rel = releaseById(ctx.releaseId);
+    if(!rel){ alert('선택한 배포 건을 찾을 수 없습니다. 목록을 새로고침해주세요.'); return; }
     var mid = document.getElementById('timerMid').value;
     var info = midInfo(mid);
     var sub = document.getElementById('timerSub').value;
     var stage = (info.group==='verify') ? document.getElementById('timerStage').value : null;
 
     var t = {
-      id: uid(), member: ctx.member, month: ctx.month, round: ctx.round, vehicle: ctx.vehicle,
+      id: uid(), member: ctx.member, releaseId: ctx.releaseId, month: rel.month, vehicle: ctx.vehicle,
       mid: mid, sub: sub, group: info.group, stage: stage,
       startTs: Date.now(), accumMs: 0, status: 'running',
       // 최초 시작 시각 — 일시정지/재개 때 갱신되는 startTs와 달리 종료까지 고정 (신뢰도 판정용 참고 정보)
@@ -1125,9 +1320,11 @@
       var pending = !!PENDING_TIMER_IDS[t.id];
       var stageTxt = t.stage ? (' · '+t.stage) : '';
       var dis = pending ? ' disabled' : '';
+      var relInfo = t.releaseId ? releaseById(t.releaseId) : null;
+      var relLabel = relInfo ? relInfo.name : (t.month||'')+' '+(t.round?(t.round+'차'):''); // 과거(차수 방식) 타이머 호환
       card.innerHTML =
         '<div class="timer-left">' +
-          '<span class="timer-tag">'+t.member+' · '+t.vehicle+' · '+t.month+' '+(t.round||1)+'차'+(pending?' · 동기화 중…':'')+'</span>' +
+          '<span class="timer-tag">'+t.member+' · '+t.vehicle+' · '+relLabel+(pending?' · 동기화 중…':'')+'</span>' +
           '<span class="timer-name">'+t.mid+' — '+t.sub+stageTxt+'</span>' +
         '</div>' +
         '<div class="timer-clock"><span class="live-dot '+(t.status==='running'?'run':'pause')+'"></span><span class="clockval">'+fmtClock(elapsedMs(t))+'</span></div>' +
@@ -1194,8 +1391,9 @@
     document.getElementById('stopSec').value = totalSec%60;
     document.getElementById('stopDate').value = todayStr();
     document.getElementById('stopNote').value = '';
+    var relInfoS = t.releaseId ? releaseById(t.releaseId) : null;
     document.getElementById('stopModalDesc').textContent =
-      t.member+' · '+t.vehicle+' · '+(t.round||1)+'차 · '+t.mid+' — '+t.sub+(t.stage?(' · '+t.stage):'')+' 항목을 저장합니다. 필요하면 시간을 보정하세요.';
+      t.member+' · '+t.vehicle+' · '+(relInfoS?relInfoS.name:t.month)+' · '+t.mid+' — '+t.sub+(t.stage?(' · '+t.stage):'')+' 항목을 저장합니다. 필요하면 시간을 보정하세요.';
     document.getElementById('stopModal').classList.add('show');
   }
 
@@ -1221,7 +1419,7 @@
     var entry = {
       // 타이머 하나당 로그 하나이므로 타이머 id를 로그 id로 재사용 —
       // 같은 타이머가 어떤 경로로든 두 번 저장돼도 아래 중복 검사에 걸리게 하는 멱등 키
-      id: t.id, member: t.member, month: t.month, round: t.round||1, vehicle: t.vehicle,
+      id: t.id, member: t.member, releaseId: t.releaseId||null, month: t.month, vehicle: t.vehicle,
       mid: t.mid, sub: t.sub, group: t.group, stage: t.stage,
       minutes: minutes, date: date, note: note, source: 'timer',
       measuredMinutes: measuredMinutes, startedAt: t.firstStartedAt || t.startTs, savedAt: Date.now(),
@@ -1300,11 +1498,26 @@
 
   /* ---------------- log tab ---------------- */
   function bindLogTab(){
-    ['logFilterMember','logFilterMonth','logFilterRound','logFilterVehicle','logFilterGroup'].forEach(function(id){
+    ['logFilterMember','logFilterMonth','logFilterRelease','logFilterVehicle','logFilterGroup'].forEach(function(id){
       document.getElementById(id).addEventListener('change', renderLogTable);
     });
-    document.getElementById('manualAddBtn').addEventListener('click', openManualModal);
+    document.getElementById('manualAddBtn').addEventListener('click', function(){ openManualModal(); });
+    document.getElementById('manualRelease').addEventListener('change', function(){
+      refreshManualVehicleSelect();
+      refreshManualMidSelect();
+    });
+    document.getElementById('manualVehicle').addEventListener('change', function(){ refreshManualMidSelect(); });
     document.getElementById('manualMid').addEventListener('change', function(){ onMidChange('manual'); });
+  }
+
+  function refreshManualReleaseSelect(){
+    fillReleaseSelect(document.getElementById('manualRelease'));
+    refreshManualVehicleSelect();
+    refreshManualMidSelect();
+  }
+  function refreshManualVehicleSelect(){
+    var rel = releaseById(document.getElementById('manualRelease').value);
+    fillSelect(document.getElementById('manualVehicle'), rel ? rel.vehicles.map(function(v){return v.name;}) : [], true);
   }
 
   // 값이 목록에 없으면(예: 설정에서 삭제된 인원·차종의 과거 기록) 옵션을 임시로 추가해 선택 가능하게 한다
@@ -1320,26 +1533,40 @@
   function openManualModal(editLog){
     EDITING_LOG_ID = (editLog && editLog.id) ? editLog.id : null;
     var memberSel = document.getElementById('manualMember');
-    var vehicleSel = document.getElementById('manualVehicle');
+    var releaseSel = document.getElementById('manualRelease');
     fillSelect(memberSel, MEMBERS, true);
-    fillSelect(vehicleSel, VEHICLES, true);
-    fillSelect(document.getElementById('manualMid'), CATEGORY_TREE.map(function(c){ return c.mid; }), true);
+    fillReleaseSelect(releaseSel);
 
     if(EDITING_LOG_ID){
       ensureOption(memberSel, editLog.member);
-      ensureOption(vehicleSel, editLog.vehicle);
       memberSel.value = editLog.member;
-      vehicleSel.value = editLog.vehicle;
+
+      var hasRelease = editLog.releaseId && Array.from(releaseSel.options).some(function(o){return o.value===editLog.releaseId;});
+      if(hasRelease){
+        releaseSel.value = editLog.releaseId;
+      } else {
+        // 배포 건 정보가 없거나(과거 기록) 삭제된 배포 건 — 안내 옵션을 보여주고 재배정을 유도
+        var placeholder = document.createElement('option');
+        placeholder.value=''; placeholder.textContent='(배포 건 미지정 — 재배정 필요)';
+        releaseSel.insertBefore(placeholder, releaseSel.firstChild);
+        releaseSel.value = '';
+      }
+      // 배포 건 → 차종 → 중분류 순으로, 배포 건 범위에 없는 과거 값(삭제/미지정 등)도
+      // 일단 보이도록 임시 옵션을 추가하면서 순서대로 채운다 (mid 목록은 차종에 따라 달라지므로 순서 중요)
+      refreshManualVehicleSelect();
+      ensureOption(document.getElementById('manualVehicle'), editLog.vehicle);
+      document.getElementById('manualVehicle').value = editLog.vehicle;
+      refreshManualMidSelect();
+      ensureOption(document.getElementById('manualMid'), editLog.mid);
       document.getElementById('manualMid').value = editLog.mid;
       onMidChange('manual');
+      ensureOption(document.getElementById('manualSub'), editLog.sub);
       document.getElementById('manualSub').value = editLog.sub;
       var info = midInfo(editLog.mid);
       if(info && info.group==='verify' && editLog.stage){
         ensureOption(document.getElementById('manualStage'), editLog.stage);
         document.getElementById('manualStage').value = editLog.stage;
       }
-      document.getElementById('manualMonth').value = editLog.month;
-      document.getElementById('manualRound').value = String(editLog.round||1);
       var totalSec = Math.round((editLog.minutes||0)*60);
       document.getElementById('manualHour').value = Math.floor(totalSec/3600);
       document.getElementById('manualMin').value = Math.floor((totalSec%3600)/60);
@@ -1350,9 +1577,8 @@
       document.getElementById('manualModalDesc').textContent = '기존 기록의 내용을 수정합니다. 저장하면 스프레드시트에도 반영됩니다.';
       document.getElementById('manualSaveBtn').textContent = '수정';
     } else {
-      onMidChange('manual');
-      document.getElementById('manualMonth').value = currentMonthStr();
-      document.getElementById('manualRound').value = '1';
+      refreshManualVehicleSelect();
+      refreshManualMidSelect();
       document.getElementById('manualDate').value = todayStr();
       document.getElementById('manualHour').value = 0;
       document.getElementById('manualMin').value = 0;
@@ -1376,6 +1602,10 @@
     var mid = document.getElementById('manualMid').value;
     var info = midInfo(mid);
     if(!info){ alert('중분류를 선택하세요.'); return; }
+    var releaseId = document.getElementById('manualRelease').value;
+    if(!releaseId){ alert('배포 건을 선택하세요.'); return; }
+    var rel = releaseById(releaseId);
+    if(!rel){ alert('선택한 배포 건을 찾을 수 없습니다. 목록을 새로고침해주세요.'); return; }
 
     var editing = EDITING_LOG_ID;
     var orig = editing ? LOGS.find(function(x){return x.id===editing;}) : null;
@@ -1394,8 +1624,7 @@
       // 수정 모드면 원래 id를 유지해 같은 기록을 교체, 방식(타이머/직접입력)도 원본 유지
       id: editing || uid(),
       member: document.getElementById('manualMember').value,
-      month: document.getElementById('manualMonth').value || currentMonthStr(),
-      round: parseInt(document.getElementById('manualRound').value, 10) || 1,
+      releaseId: releaseId, month: rel.month,
       vehicle: document.getElementById('manualVehicle').value,
       mid: mid,
       sub: document.getElementById('manualSub').value,
@@ -1460,15 +1689,18 @@
   function filteredLogsFor(prefix){
     var member = document.getElementById(prefix+'FilterMember').value;
     var month = document.getElementById(prefix+'FilterMonth').value;
-    var round = document.getElementById(prefix+'FilterRound').value;
     var vehicle = document.getElementById(prefix+'FilterVehicle').value;
     var group = prefix==='log' ? document.getElementById('logFilterGroup').value : 'all';
+    var releaseFilter = document.getElementById(prefix+'FilterRelease').value;
     return LOGS.filter(function(l){
       if(member!=='all' && l.member!==member) return false;
       if(month!=='all' && l.month!==month) return false;
-      if(round!=='all' && ((l.round||1)+'차')!==round) return false;
       if(vehicle!=='all' && l.vehicle!==vehicle) return false;
       if(group!=='all' && l.group!==group) return false;
+      if(releaseFilter!=='all'){
+        if(releaseFilter==='__unassigned__'){ if(l.releaseId) return false; }
+        else if(l.releaseId!==releaseFilter) return false;
+      }
       return true;
     });
   }
@@ -1493,11 +1725,19 @@
                    : checkVal==='수정됨' ? '<span class="tag tag-edited">수정됨</span>'
                    : checkVal==='수동입력' ? '<span class="tag tag-manualentry">수동입력</span>'
                    : '<span class="tag tag-unknown">확인불가</span>';
+      // 배포 건은 이름을 저장해두지 않고 id로 매번 조회 — 배포 건 이름이 바뀌면 로그 표시도 자동으로 따라간다
+      var releaseCell;
+      if(l.releaseId){
+        var relInfo = releaseById(l.releaseId);
+        releaseCell = relInfo ? escapeHtml(relInfo.name) : '<span class="tag tag-unknown">삭제된 배포 건</span>';
+      } else {
+        releaseCell = '<span class="tag tag-unknown">미지정'+(l.round?' ('+l.round+'차)':'')+'</span>';
+      }
       tr.innerHTML =
         '<td>'+l.date+'</td>'+
         '<td>'+l.member+'</td>'+
         '<td>'+l.month+'</td>'+
-        '<td>'+(l.round||1)+'차</td>'+
+        '<td>'+releaseCell+'</td>'+
         '<td>'+l.vehicle+'</td>'+
         '<td>'+l.mid+' '+groupTag+'</td>'+
         '<td>'+l.sub+subTag+'</td>'+
@@ -1543,7 +1783,7 @@
 
   /* ---------------- dashboard ---------------- */
   function bindDashTab(){
-    ['dashFilterMember','dashFilterMonth','dashFilterRound','dashFilterVehicle'].forEach(function(id){
+    ['dashFilterMember','dashFilterMonth','dashFilterRelease','dashFilterVehicle'].forEach(function(id){
       document.getElementById(id).addEventListener('change', renderDashboard);
     });
   }
@@ -1591,20 +1831,25 @@
       options: baseChartOptions({ plugins:{ legend:{display:false} } })
     });
 
-    // 차종별 총공수 — 차종=x축(항목), 차수=순차 램프로 누적. 세그먼트 사이 2px 서피스 갭
-    var roundNumsV = uniqueSorted(rows.map(function(l){return String(l.round||1);})).map(Number).sort(function(a,b){return a-b;});
-    if(!roundNumsV.length) roundNumsV = [1];
+    // 차종별 총공수 — 차종=x축(항목), 배포 유형(공식/정기펌웨어)별로 누적. 세그먼트 사이 2px 서피스 갭
+    var TYPE_ORDER_V = ['공식펌웨어','정기펌웨어'];
+    var TYPE_COLOR_V = { '공식펌웨어': CHART_CAT[0], '정기펌웨어': CHART_CAT[5] };
+    var typesPresent = uniqueSorted(rows.map(releaseTypeOf)).sort(function(a,b){
+      var ia = TYPE_ORDER_V.indexOf(a); if(ia===-1) ia = 99;
+      var ib = TYPE_ORDER_V.indexOf(b); if(ib===-1) ib = 99;
+      return ia-ib;
+    });
     destroyChart('vehicle');
     charts.vehicle = new Chart(document.getElementById('chartByVehicle'), {
       type:'bar',
-      data:{ labels:VEHICLES, datasets: roundNumsV.map(function(rn){
+      data:{ labels:VEHICLES, datasets: typesPresent.map(function(t){
         return barSpec({
-          label: rn+'차',
+          label: t,
           data: VEHICLES.map(function(v){
-            return Math.round(rows.filter(function(l){return l.vehicle===v && (l.round||1)===rn;})
+            return Math.round(rows.filter(function(l){return l.vehicle===v && releaseTypeOf(l)===t;})
               .reduce(function(s,l){return s+l.minutes;},0)/6)/10;
           }),
-          backgroundColor: chartRoundColor(rn),
+          backgroundColor: TYPE_COLOR_V[t] || '#A39E98',
           borderColor: CHART_SURFACE,
           borderWidth: 2
         });
@@ -1713,7 +1958,7 @@
       setSyncing(true);
       await sSet('meta-vehicles', VEHICLES);
       setSyncing(false);
-      refreshVehicleSelects();
+      renderReleaseFormChecks();
       refreshFilterOptions();
       renderDashboard();
       alert('차종 목록이 저장되었습니다.');
@@ -1733,6 +1978,7 @@
       setSyncing(false);
       renderCategoryManageList();
       refreshMidSelects();
+      renderReleaseFormChecks();
       alert('분류 체계가 저장되었습니다.');
     });
     document.getElementById('resetDataBtn').addEventListener('click', function(){
@@ -1763,8 +2009,23 @@
       alert('비밀번호가 변경되었습니다.');
     });
 
+    document.getElementById('savePmPinBtn').addEventListener('click', async function(){
+      var p1 = document.getElementById('newPmPinInput').value;
+      var p2 = document.getElementById('newPmPinConfirm').value;
+      if(!p1 || p1.length<4){ alert('비밀번호는 4자 이상으로 설정해주세요.'); return; }
+      if(p1!==p2){ alert('비밀번호 확인이 일치하지 않습니다.'); return; }
+      setSyncing(true);
+      await sSet('meta-pm-pin', p1);
+      PM_PIN = p1;
+      setSyncing(false);
+      document.getElementById('newPmPinInput').value='';
+      document.getElementById('newPmPinConfirm').value='';
+      alert('PM 비밀번호가 변경되었습니다.');
+    });
+
     document.getElementById('relockBtn').addEventListener('click', function(){
       isAdminUnlocked = false;
+      isReleaseUnlocked = false;
       applyLockState();
     });
   }
@@ -1775,6 +2036,8 @@
     var logContent = document.getElementById('logContent');
     var setGate = document.getElementById('settingsLockGate');
     var setContent = document.getElementById('settingsContent');
+    var relGate = document.getElementById('releaseLockGate');
+    var relContent = document.getElementById('releaseContent');
     if(isAdminUnlocked){
       logGate.classList.add('hidden'); logContent.classList.remove('hidden');
       setGate.classList.add('hidden'); setContent.classList.remove('hidden');
@@ -1782,27 +2045,51 @@
       logGate.classList.remove('hidden'); logContent.classList.add('hidden');
       setGate.classList.remove('hidden'); setContent.classList.add('hidden');
     }
+    // 배포 관리는 관리자 비밀번호로도 열림(상위 권한), PM 비밀번호는 이 탭만 엶
+    if(isAdminUnlocked || isReleaseUnlocked){
+      relGate.classList.add('hidden'); relContent.classList.remove('hidden');
+    } else {
+      relGate.classList.remove('hidden'); relContent.classList.add('hidden');
+    }
   }
 
   function bindLockGates(){
-    function tryUnlock(inputId, errorId){
+    function tryUnlock(inputId, errorId, validPins, onSuccess){
       var val = document.getElementById(inputId).value;
-      if(val === ADMIN_PIN){
-        isAdminUnlocked = true;
+      if(validPins.indexOf(val) > -1){
         document.getElementById(inputId).value='';
         document.getElementById(errorId).textContent='';
-        applyLockState();
-        renderLogTable();
-        renderMemberSettingsList();
-        renderVehicleSettingsList();
+        onSuccess();
       } else {
         document.getElementById(errorId).textContent='비밀번호가 올바르지 않습니다.';
       }
     }
-    document.getElementById('logPinBtn').addEventListener('click', function(){ tryUnlock('logPinInput','logPinError'); });
-    document.getElementById('logPinInput').addEventListener('keydown', function(e){ if(e.key==='Enter') tryUnlock('logPinInput','logPinError'); });
-    document.getElementById('settingsPinBtn').addEventListener('click', function(){ tryUnlock('settingsPinInput','settingsPinError'); });
-    document.getElementById('settingsPinInput').addEventListener('keydown', function(e){ if(e.key==='Enter') tryUnlock('settingsPinInput','settingsPinError'); });
+    function unlockAdmin(){
+      isAdminUnlocked = true;
+      isReleaseUnlocked = true; // 관리자는 배포 관리 탭도 함께 열림 (상위 권한)
+      applyLockState();
+      renderLogTable();
+      renderMemberSettingsList();
+      renderVehicleSettingsList();
+      renderCategoryManageList();
+      renderReleaseTable();
+    }
+    function unlockRelease(){
+      isReleaseUnlocked = true;
+      applyLockState();
+      renderReleaseFormChecks();
+      renderReleaseTable();
+    }
+    document.getElementById('logPinBtn').addEventListener('click', function(){ tryUnlock('logPinInput','logPinError',[ADMIN_PIN],unlockAdmin); });
+    document.getElementById('logPinInput').addEventListener('keydown', function(e){ if(e.key==='Enter') tryUnlock('logPinInput','logPinError',[ADMIN_PIN],unlockAdmin); });
+    document.getElementById('settingsPinBtn').addEventListener('click', function(){ tryUnlock('settingsPinInput','settingsPinError',[ADMIN_PIN],unlockAdmin); });
+    document.getElementById('settingsPinInput').addEventListener('keydown', function(e){ if(e.key==='Enter') tryUnlock('settingsPinInput','settingsPinError',[ADMIN_PIN],unlockAdmin); });
+    document.getElementById('releasePinBtn').addEventListener('click', function(){ tryUnlock('releasePinInput','releasePinError',[ADMIN_PIN,PM_PIN],unlockRelease); });
+    document.getElementById('releasePinInput').addEventListener('keydown', function(e){ if(e.key==='Enter') tryUnlock('releasePinInput','releasePinError',[ADMIN_PIN,PM_PIN],unlockRelease); });
+    document.getElementById('releaseRelockBtn').addEventListener('click', function(){
+      isReleaseUnlocked = false;
+      applyLockState();
+    });
   }
 
   function renderMemberSettingsList(){
@@ -1899,6 +2186,298 @@
       var subInputs = block.querySelectorAll('.cat-sub-input');
       var subs = Array.from(subInputs).map(function(i){return i.value.trim();}).filter(Boolean);
       c.subs = subs.length ? subs : c.subs;
+    });
+  }
+
+  /* ---------------- release (배포 관리) tab ---------------- */
+  var EDITING_RELEASE_ID = null;
+
+  function bindReleaseTab(){
+    document.getElementById('relMonth').value = currentMonthStr();
+    document.getElementById('registerReleaseBtn').addEventListener('click', submitReleaseForm);
+    document.getElementById('releaseFormCancelBtn').addEventListener('click', closeReleaseEditForm);
+  }
+
+  function updateSubsToggleLabel(subsWrap){
+    var subCbs = subsWrap.querySelectorAll('.rel-sub-check');
+    var allChecked = subCbs.length>0 && Array.from(subCbs).every(function(cb){return cb.checked;});
+    var toggleBtn = subsWrap.querySelector('.rel-subs-toggle');
+    if(toggleBtn) toggleBtn.textContent = allChecked ? '전체 해제' : '전체 선택';
+  }
+
+  /** 중분류+소분류 체크리스트 DOM 한 덩어리를 만든다 (차종 하나에 대응).
+   *  presetMids가 있으면(수정 모드) 그 값대로 복원, 없으면(신규) 환경설정만 기본 체크. */
+  function buildVehicleMidSection(vehicleName, presetMids){
+    var wrap = document.createElement('div');
+    wrap.className = 'rel-vehicle-mid-section cat-block';
+    wrap.dataset.vehicle = vehicleName;
+    wrap.style.marginBottom = '12px';
+
+    var title = document.createElement('div');
+    title.style.cssText = 'font-weight:700;font-size:13px;margin-bottom:10px;';
+    title.textContent = vehicleName + ' 적용 항목';
+    wrap.appendChild(title);
+
+    CATEGORY_TREE.filter(function(c){ return c.group!=='pm'; }).forEach(function(c){
+      var preset = presetMids && presetMids.find(function(a){ return a.mid===c.mid; });
+      var midChecked = preset ? true : (c.group==='env');
+      var checkedSubs = preset ? preset.subs : (midChecked ? c.subs.slice() : []);
+      var tag = c.group==='verify' ? '<span class="tag tag-verify">검증수행</span>' : '<span class="tag tag-env">환경설정</span>';
+
+      var block = document.createElement('div');
+      block.className = 'cat-block rel-mid-block';
+      block.dataset.mid = c.mid;
+      block.style.background = 'var(--panel)';
+
+      var subsHtml = c.subs.map(function(sub){
+        var checked = checkedSubs.indexOf(sub)>-1;
+        return '<label style="display:flex;align-items:center;gap:6px;margin-bottom:5px;font-size:13px;">'+
+          '<input type="checkbox" class="rel-sub-check" value="'+escapeHtml(sub)+'"'+(checked?' checked':'')+' /> '+escapeHtml(sub)+'</label>';
+      }).join('');
+
+      block.innerHTML =
+        '<label style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:13.5px;">'+
+          '<input type="checkbox" class="rel-mid-check" value="'+escapeHtml(c.mid)+'"'+(midChecked?' checked':'')+' /> '+escapeHtml(c.mid)+' '+tag+
+        '</label>'+
+        '<div class="cat-subs rel-sub-checks" style="margin-top:8px;'+(midChecked?'':'display:none;')+'">'+
+          '<button type="button" class="btn btn-secondary btn-sm rel-subs-toggle" style="margin-bottom:8px;"></button>'+
+          subsHtml+
+        '</div>';
+      wrap.appendChild(block);
+    });
+
+    wireMidSection(wrap);
+    wrap.querySelectorAll('.rel-sub-checks').forEach(updateSubsToggleLabel);
+    return wrap;
+  }
+
+  /** 중분류 체크→소분류 전체선택 펼침, 전체선택/해제 토글, 개별 소분류 변경 시 라벨 갱신 — 섹션 범위 내에서 동작 */
+  function wireMidSection(container){
+    container.querySelectorAll('.rel-mid-check').forEach(function(midCb){
+      midCb.addEventListener('change', function(){
+        var block = midCb.closest('.rel-mid-block');
+        var subsWrap = block.querySelector('.rel-sub-checks');
+        if(midCb.checked){
+          subsWrap.style.display = '';
+          subsWrap.querySelectorAll('.rel-sub-check').forEach(function(sc){ sc.checked = true; });
+          updateSubsToggleLabel(subsWrap);
+        } else {
+          subsWrap.style.display = 'none';
+        }
+      });
+    });
+    container.querySelectorAll('.rel-subs-toggle').forEach(function(toggleBtn){
+      toggleBtn.addEventListener('click', function(){
+        var subsWrap = toggleBtn.closest('.rel-sub-checks');
+        var subCbs = subsWrap.querySelectorAll('.rel-sub-check');
+        var allChecked = Array.from(subCbs).every(function(cb){return cb.checked;});
+        subCbs.forEach(function(cb){ cb.checked = !allChecked; });
+        updateSubsToggleLabel(subsWrap);
+      });
+    });
+    container.querySelectorAll('.rel-sub-check').forEach(function(subCb){
+      subCb.addEventListener('change', function(){
+        updateSubsToggleLabel(subCb.closest('.rel-sub-checks'));
+      });
+    });
+  }
+
+  var activeVehicleTab = null;
+
+  /** 체크된 차종이 2개 이상이면 탭으로, 1개면 탭 없이 바로 보여준다 */
+  function renderVehicleTabs(){
+    var tabWrap = document.getElementById('relVehicleTabs');
+    var sections = document.querySelectorAll('#relVehicleMidSections .rel-vehicle-mid-section');
+    if(sections.length < 2){
+      tabWrap.style.display = 'none';
+      tabWrap.innerHTML = '';
+      sections.forEach(function(sec){ sec.style.display = ''; });
+      if(sections.length===1) activeVehicleTab = sections[0].dataset.vehicle;
+      return;
+    }
+    if(!Array.from(sections).some(function(s){return s.dataset.vehicle===activeVehicleTab;})){
+      activeVehicleTab = sections[0].dataset.vehicle;
+    }
+    tabWrap.style.display = 'flex';
+    tabWrap.innerHTML = Array.from(sections).map(function(sec){
+      var vName = sec.dataset.vehicle;
+      return '<button type="button" class="rel-vehicle-tab-btn'+(vName===activeVehicleTab?' active':'')+'" data-vehicle="'+escapeHtml(vName)+'">'+escapeHtml(vName)+'</button>';
+    }).join('');
+    tabWrap.querySelectorAll('.rel-vehicle-tab-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){ showVehicleTab(btn.dataset.vehicle); });
+    });
+    sections.forEach(function(sec){ sec.style.display = sec.dataset.vehicle===activeVehicleTab ? '' : 'none'; });
+  }
+
+  function showVehicleTab(vName){
+    activeVehicleTab = vName;
+    document.querySelectorAll('#relVehicleMidSections .rel-vehicle-mid-section').forEach(function(sec){
+      sec.style.display = sec.dataset.vehicle===vName ? '' : 'none';
+    });
+    document.querySelectorAll('.rel-vehicle-tab-btn').forEach(function(btn){
+      btn.classList.toggle('active', btn.dataset.vehicle===vName);
+    });
+  }
+
+  function renderReleaseFormChecks(){
+    var vWrap = document.getElementById('relVehicleChecks');
+    vWrap.innerHTML = VEHICLES.map(function(v){
+      return '<label style="display:inline-flex;align-items:center;gap:5px;margin:0 14px 8px 0;font-weight:500;font-size:13.5px;">'+
+        '<input type="checkbox" class="rel-vehicle-check" value="'+escapeHtml(v)+'" /> '+escapeHtml(v)+'</label>';
+    }).join('') || '<p class="hint" style="margin:0;">설정 탭에서 차종을 먼저 등록해주세요.</p>';
+
+    var sectionsWrap = document.getElementById('relVehicleMidSections');
+    sectionsWrap.innerHTML = '';
+    activeVehicleTab = null;
+    renderVehicleTabs();
+
+    // 차종 체크 시 그 차종의 적용 항목 섹션을 추가/제거하고, 새로 추가된 차종 탭으로 바로 전환
+    vWrap.querySelectorAll('.rel-vehicle-check').forEach(function(vcb){
+      vcb.addEventListener('change', function(){
+        var vName = vcb.value;
+        var existing = sectionsWrap.querySelector('.rel-vehicle-mid-section[data-vehicle="'+vName.replace(/"/g,'\\"')+'"]');
+        if(vcb.checked){
+          if(!existing){
+            sectionsWrap.appendChild(buildVehicleMidSection(vName, null));
+            activeVehicleTab = vName;
+          }
+        } else {
+          if(existing) existing.remove();
+        }
+        renderVehicleTabs();
+      });
+    });
+  }
+
+  /** 체크된 차종마다, 그 차종에서 체크된 중분류/소분류를 모아 [{name, applicableMids:[{mid,subs}]}] 형태로 반환 */
+  function collectVehicleApplicableMids(){
+    return Array.from(document.querySelectorAll('#relVehicleMidSections .rel-vehicle-mid-section')).map(function(section){
+      var mids = [];
+      section.querySelectorAll('.rel-mid-block').forEach(function(block){
+        var midCb = block.querySelector('.rel-mid-check');
+        if(!midCb.checked) return;
+        var subs = Array.from(block.querySelectorAll('.rel-sub-check:checked')).map(function(sc){return sc.value;});
+        if(subs.length) mids.push({ mid: midCb.value, subs: subs });
+      });
+      return { name: section.dataset.vehicle, applicableMids: mids };
+    });
+  }
+
+  function openReleaseEditForm(rel){
+    EDITING_RELEASE_ID = rel.id;
+    document.getElementById('relMonth').value = rel.month;
+    document.getElementById('relMonth').disabled = true;
+    document.getElementById('relType').value = rel.type;
+    document.getElementById('relType').disabled = true;
+    document.getElementById('relLabel').value = rel.label || '';
+
+    renderReleaseFormChecks(); // 체크박스·섹션 초기화
+    var sectionsWrap = document.getElementById('relVehicleMidSections');
+    var vNames = rel.vehicles.map(function(v){return v.name;});
+    document.querySelectorAll('.rel-vehicle-check').forEach(function(cb){ cb.checked = vNames.indexOf(cb.value)>-1; });
+    rel.vehicles.forEach(function(v){
+      sectionsWrap.appendChild(buildVehicleMidSection(v.name, v.applicableMids));
+    });
+    activeVehicleTab = rel.vehicles.length ? rel.vehicles[0].name : null;
+    renderVehicleTabs();
+
+    document.getElementById('releaseFormTitle').textContent = '배포 건 수정: '+rel.name;
+    document.getElementById('registerReleaseBtn').textContent = '배포 건 수정 저장';
+    document.getElementById('releaseFormCancelBtn').style.display = '';
+    document.getElementById('tab-release').scrollIntoView({behavior:'smooth', block:'start'});
+  }
+
+  function closeReleaseEditForm(){
+    EDITING_RELEASE_ID = null;
+    document.getElementById('relMonth').disabled = false;
+    document.getElementById('relType').disabled = false;
+    document.getElementById('relMonth').value = currentMonthStr();
+    document.getElementById('relLabel').value = '';
+    renderReleaseFormChecks();
+    document.getElementById('releaseFormTitle').textContent = '배포 건 등록';
+    document.getElementById('registerReleaseBtn').textContent = '배포 건 등록';
+    document.getElementById('releaseFormCancelBtn').style.display = 'none';
+  }
+
+  var RELEASE_SAVING = false;
+  async function submitReleaseForm(){
+    if(RELEASE_SAVING) return;
+    var month = document.getElementById('relMonth').value;
+    var type = document.getElementById('relType').value;
+    var label = document.getElementById('relLabel').value.trim();
+    var vehicles = collectVehicleApplicableMids();
+    if(!month){ alert('월을 선택하세요.'); return; }
+    if(!vehicles.length){ alert('차종을 1개 이상 선택하세요.'); return; }
+
+    RELEASE_SAVING = true;
+    var btn = document.getElementById('registerReleaseBtn');
+    btn.disabled = true;
+    btn.textContent = '저장 중…';
+    try{
+      setSyncing(true);
+      if(EDITING_RELEASE_ID){
+        var rel = RELEASES.find(function(r){return r.id===EDITING_RELEASE_ID;});
+        if(!rel){
+          alert('수정하려는 배포 건을 찾지 못했습니다. (다른 기기에서 삭제됐을 수 있음)');
+          closeReleaseEditForm();
+          return;
+        }
+        rel.label = label;
+        rel.vehicles = vehicles;
+        rel.name = rel.month+' '+rel.type+' '+rel.seq+'차 등록'+(label?' ('+label+')':'');
+        var ok = await sSet('meta-releases', RELEASES);
+        if(!ok){ alert('저장에 실패했습니다. 네트워크 확인 후 다시 시도해주세요.'); return; }
+        closeReleaseEditForm();
+      } else {
+        var r = await sRegisterRelease({
+          month: month, type: type, label: label, vehicles: vehicles,
+          createdBy: isAdminUnlocked ? '관리자' : 'PM'
+        });
+        if(!r){ alert('등록에 실패했습니다. 네트워크 확인 후 다시 시도해주세요.'); return; }
+        RELEASES = r.releases;
+        document.getElementById('relLabel').value = '';
+        renderReleaseFormChecks();
+      }
+      renderReleaseTable();
+    } finally {
+      RELEASE_SAVING = false;
+      btn.disabled = false;
+      btn.textContent = EDITING_RELEASE_ID ? '배포 건 수정 저장' : '배포 건 등록';
+      setSyncing(false);
+    }
+  }
+
+  function renderReleaseTable(){
+    var tbody = document.getElementById('releaseTableBody');
+    tbody.innerHTML = '';
+    RELEASES.slice().sort(function(a,b){ return (b.createdAt||'').localeCompare(a.createdAt||''); }).forEach(function(rel){
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>'+escapeHtml(rel.name)+'</td>'+
+        '<td>'+escapeHtml(rel.month)+'</td>'+
+        '<td>'+escapeHtml(rel.type)+'</td>'+
+        '<td>'+rel.vehicles.map(function(v){return escapeHtml(v.name);}).join(', ')+'</td>'+
+        '<td>'+rel.vehicles.map(function(v){
+          return '<b>'+escapeHtml(v.name)+'</b>: '+(v.applicableMids.length ? v.applicableMids.map(function(a){return escapeHtml(a.mid)+'('+a.subs.length+')';}).join(', ') : '<span class="hint">없음</span>');
+        }).join('<br/>')+'</td>'+
+        '<td style="white-space:nowrap;"><button class="edit-x" title="수정">✏️</button><button class="del-x" title="삭제">✕</button></td>';
+      tr.querySelector('.edit-x').addEventListener('click', function(){ openReleaseEditForm(rel); });
+      tr.querySelector('.del-x').addEventListener('click', function(){ deleteRelease(rel.id); });
+      tbody.appendChild(tr);
+    });
+    if(!RELEASES.length){
+      tbody.innerHTML = '<tr><td colspan="6"><div class="empty-note">등록된 배포 건이 없습니다.</div></td></tr>';
+    }
+  }
+
+  function deleteRelease(id){
+    showConfirm('배포 건 삭제', '이 배포 건을 삭제할까요? 되돌릴 수 없습니다.', async function(){
+      setSyncing(true);
+      RELEASES = RELEASES.filter(function(r){return r.id!==id;});
+      await sSet('meta-releases', RELEASES);
+      setSyncing(false);
+      if(EDITING_RELEASE_ID===id) closeReleaseEditForm();
+      renderReleaseTable();
     });
   }
 
