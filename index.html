@@ -338,23 +338,26 @@
       <h2>⏱ 타이머로 측정</h2>
       <p class="card-sub">시작을 누르면 실행 중인 타이머 목록에 추가됩니다. 여러 항목을 동시에 진행할 수 있습니다.</p>
 
-      <div class="grid-3">
-        <div class="field">
-          <label>중분류</label>
-          <select id="timerMid"></select>
+      <div class="empty-note" id="timerCardGate">위 기본 정보에서 담당자·배포 건·차종을 먼저 선택하세요.</div>
+      <div id="timerCardBody" class="hidden">
+        <div class="grid-3">
+          <div class="field">
+            <label>중분류</label>
+            <select id="timerMid"></select>
+          </div>
+          <div class="field">
+            <label>소분류</label>
+            <select id="timerSub"></select>
+          </div>
+          <div class="field" id="timerStageField">
+            <label>작업 단계</label>
+            <select id="timerStage"></select>
+          </div>
         </div>
-        <div class="field">
-          <label>소분류</label>
-          <select id="timerSub"></select>
-        </div>
-        <div class="field" id="timerStageField">
-          <label>작업 단계</label>
-          <select id="timerStage"></select>
-        </div>
-      </div>
-      <button class="btn btn-primary btn-block" id="startTimerBtn">▶ 시작</button>
+        <button class="btn btn-primary btn-block" id="startTimerBtn">▶ 시작</button>
 
-      <div id="timerList"></div>
+        <div id="timerList"></div>
+      </div>
     </div>
   </div>
 
@@ -1045,7 +1048,7 @@
     renderReleaseFormChecks();
     renderReleaseTable();
 
-    renderActiveTimers();
+    updateTimerCardGate();
     refreshFilterOptions();
     renderLogTable();
     renderDashboard();
@@ -1085,22 +1088,31 @@
   }
 
   /* ---------------- select population ---------------- */
-  function fillSelect(sel, options, keepValue){
+  // placeholderText를 주면 맨 앞에 빈 값(선택 안 됨) 옵션을 넣고, 유효한 이전 선택이 없으면
+  // 브라우저가 첫 실제 옵션을 자동으로 골라버리는 대신 이 플레이스홀더가 선택되게 한다.
+  // 기존 호출부(placeholderText 생략)는 동작이 그대로라 다른 select에는 영향 없다.
+  function fillSelect(sel, options, keepValue, placeholderText){
     var prev = sel.value;
     sel.innerHTML = '';
+    if(placeholderText){
+      var ph = document.createElement('option');
+      ph.value=''; ph.textContent=placeholderText;
+      sel.appendChild(ph);
+    }
     options.forEach(function(o){
       var opt = document.createElement('option');
       opt.value = o; opt.textContent = o;
       sel.appendChild(opt);
     });
     if(keepValue && options.indexOf(prev)>-1) sel.value = prev;
+    else if(placeholderText) sel.value = '';
   }
 
   function refreshMemberSelects(){
-    fillSelect(document.getElementById('ctxMember'), MEMBERS, true);
+    fillSelect(document.getElementById('ctxMember'), MEMBERS, true, '담당자를 선택하세요');
   }
 
-  function fillReleaseSelect(sel){
+  function fillReleaseSelect(sel, placeholderText){
     var prev = sel.value;
     sel.innerHTML = '';
     var sorted = RELEASES.slice().sort(function(a,b){ return (b.createdAt||'').localeCompare(a.createdAt||''); });
@@ -1110,21 +1122,38 @@
       sel.appendChild(opt);
       return;
     }
+    if(placeholderText){
+      var ph = document.createElement('option');
+      ph.value=''; ph.textContent=placeholderText;
+      sel.appendChild(ph);
+    }
     sorted.forEach(function(r){
       var opt = document.createElement('option');
       opt.value = r.id; opt.textContent = r.name;
       sel.appendChild(opt);
     });
     if(sorted.some(function(r){return r.id===prev;})) sel.value = prev;
+    else if(placeholderText) sel.value = '';
   }
   function refreshReleaseSelects(){
-    fillReleaseSelect(document.getElementById('ctxRelease'));
+    fillReleaseSelect(document.getElementById('ctxRelease'), '배포 건을 선택하세요');
     refreshCtxVehicleSelect();
     refreshMidSelects();
   }
   function refreshCtxVehicleSelect(){
     var rel = releaseById(document.getElementById('ctxRelease').value);
-    fillSelect(document.getElementById('ctxVehicle'), rel ? rel.vehicles.map(function(v){return v.name;}) : [], true);
+    fillSelect(document.getElementById('ctxVehicle'), rel ? rel.vehicles.map(function(v){return v.name;}) : [], true, '차종을 선택하세요');
+  }
+
+  // 담당자·배포 건·차종을 모두 고르기 전엔 '타이머로 측정' 카드 내용을 아예 숨긴다 —
+  // 예전엔 select가 항상 첫 값으로 자동 선택돼 있어서 아무도 실제로 고르지 않았는데도
+  // 이미 누군가 선택한 것처럼 보였고, 그 아래 타이머 목록도 곧바로 뜨는 문제가 있었다.
+  function updateTimerCardGate(){
+    var ctx = currentContext();
+    var ready = !!(ctx.member && ctx.releaseId && ctx.vehicle);
+    document.getElementById('timerCardGate').classList.toggle('hidden', ready);
+    document.getElementById('timerCardBody').classList.toggle('hidden', !ready);
+    renderActiveTimers();
   }
 
   /** 배포 건 + 차종이 선택한 중분류 목록 (PM 업무는 배포 건·차종과 무관하게 항상 포함) */
@@ -1223,11 +1252,16 @@
 
   /* ---------------- record tab bindings ---------------- */
   function bindRecordTab(){
+    document.getElementById('ctxMember').addEventListener('change', updateTimerCardGate);
     document.getElementById('ctxRelease').addEventListener('change', function(){
       refreshCtxVehicleSelect();
       refreshMidSelects();
+      updateTimerCardGate();
     });
-    document.getElementById('ctxVehicle').addEventListener('change', function(){ refreshMidSelects(); });
+    document.getElementById('ctxVehicle').addEventListener('change', function(){
+      refreshMidSelects();
+      updateTimerCardGate();
+    });
     document.getElementById('timerMid').addEventListener('change', function(){ onMidChange('timer'); });
     document.getElementById('startTimerBtn').addEventListener('click', startTimer);
   }
@@ -1369,12 +1403,18 @@
 
   function renderActiveTimers(){
     var wrap = document.getElementById('timerList');
+    // '공수 입력' 탭의 타이머 목록은 지금 선택된 담당자·배포 건·차종 조합에 해당하는 것만 보여준다
+    // (같은 담당자라도 다른 차종/배포 건 작업 중이던 타이머까지 섞여 보이면 헷갈리므로).
+    // 전체 팀원·전체 조합 현황은 대시보드의 '지금 진행 중' 카드(renderLiveTimers)가 따로 담당한다
+    var ctx = currentContext();
+    var myTimers = TIMERS.filter(function(t){
+      return t.member===ctx.member && (t.releaseId||null)===(ctx.releaseId||null) && t.vehicle===ctx.vehicle;
+    });
     wrap.innerHTML = '';
-    if(!TIMERS.length){
+    if(!myTimers.length){
       wrap.innerHTML = '<div class="empty-note">현재 실행 중인 타이머가 없습니다.</div>';
-      return;
-    }
-    TIMERS.slice().sort(function(a,b){return b.startTs-a.startTs;}).forEach(function(t){
+    } else {
+    myTimers.slice().sort(function(a,b){return b.startTs-a.startTs;}).forEach(function(t){
       var card = document.createElement('div');
       card.className = 'timer-card' + (t.status==='paused' ? ' paused' : '');
       card.dataset.id = t.id;
@@ -1401,6 +1441,7 @@
       card.querySelector('.act-cancel').addEventListener('click', function(){ cancelTimer(t.id); });
       wrap.appendChild(card);
     });
+    }
     renderLiveTimers();
   }
 
