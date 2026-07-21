@@ -250,6 +250,9 @@
     font-family:var(--sans);cursor:pointer;white-space:nowrap;
   }
   .sub-view-tab-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .sub-stage-legend{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px;font-size:12px;color:var(--ink-soft);}
+  .sub-stage-legend span{display:inline-flex;align-items:center;gap:5px;}
+  .sub-stage-legend i{width:9px;height:9px;border-radius:50%;display:inline-block;}
   .sub-grouped-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;}
   .sub-group-card{border:1px solid var(--line);border-radius:var(--r-md);padding:12px;background:var(--panel-alt);}
   .sub-group-card h4{font-size:13px;font-weight:700;color:var(--ink);margin:0 0 8px;}
@@ -505,7 +508,14 @@
           </div>
         </div>
         <div id="subViewBar" class="chart-wrap" style="height:320px;"><canvas id="chartBySub"></canvas></div>
-        <div id="subViewGrouped" class="hidden sub-grouped-grid"></div>
+        <div id="subViewGroupedWrap" class="hidden">
+          <div class="sub-stage-legend hidden" id="subGroupedLegend">
+            <span><i style="background:#0075de;"></i>검증 수행</span>
+            <span><i style="background:#dd5b00;"></i>Fail 분석</span>
+            <span><i style="background:#ff64c8;"></i>이슈리포트 작성</span>
+          </div>
+          <div id="subViewGrouped" class="sub-grouped-grid"></div>
+        </div>
         <div id="subViewTable" class="hidden">
           <div class="table-wrap" style="max-height:420px;">
             <table id="subSumTable">
@@ -1866,11 +1876,18 @@
   /* ---------------- 소분류별 소요시간 합계 카드 — 막대/중분류별/표 세 가지 보기 ---------------- */
   var SUB_VIEW = 'bar';
   var LAST_SUB_MAP = null;
+  var LAST_SUB_STAGE_MAP = null;
   var SUB_GROUP_CHART_KEYS = [];
   var SUB_TABLE_SORT = { field:'sum', dir:'desc' };
+  var STAGE_COLOR = { '검증 수행':'#0075de', 'Fail 분석':'#dd5b00', '이슈리포트 작성':'#ff64c8' };
 
   function allMidsOrdered(){ return CATEGORY_TREE.map(function(c){ return c.mid; }); }
+  // 검증(verify) 중분류만 카테고리 팔레트를 순환해서 서로 다른 색을 준다. 환경설정/PM업무는
+  // 항상 정해진 역할색(env=보라, pm=초록)을 쓴다 — 순환색을 그대로 쓰면 우연히 파랑(검증/정상)이나
+  // 주황(이슈 대응) 자리에 걸려서 실제로는 무관한데도 그 의미로 오해될 수 있기 때문
   function midColor(mid){
+    var info = midInfo(mid);
+    if(info && info.group!=='verify' && CHART_ROLE[info.group]) return CHART_ROLE[info.group];
     var idx = allMidsOrdered().indexOf(mid);
     return CHART_CAT[(idx>=0?idx:0) % CHART_CAT.length];
   }
@@ -1882,14 +1899,28 @@
     }).sort(function(a,b){ return b.sum-a.sum; });
   }
 
-  function renderSubSection(subMap){
+  // subMap과 같은 키(mid · sub)로 작업단계별 소요시간을 따로 모아둔다 — 검증(verify) 항목만 단계가 있음
+  function buildSubStageMap(rows){
+    var map = {};
+    rows.forEach(function(l){
+      if(l.group!=='verify') return;
+      var key = l.mid+' · '+l.sub;
+      var st = l.stage || '(단계 미지정)';
+      if(!map[key]) map[key] = {};
+      map[key][st] = (map[key][st]||0) + l.minutes;
+    });
+    return map;
+  }
+
+  function renderSubSection(subMap, subStageMap){
     LAST_SUB_MAP = subMap;
+    LAST_SUB_STAGE_MAP = subStageMap;
     var entries = subMapEntries(subMap);
     document.getElementById('subViewBar').classList.toggle('hidden', SUB_VIEW!=='bar');
-    document.getElementById('subViewGrouped').classList.toggle('hidden', SUB_VIEW!=='grouped');
+    document.getElementById('subViewGroupedWrap').classList.toggle('hidden', SUB_VIEW!=='grouped');
     document.getElementById('subViewTable').classList.toggle('hidden', SUB_VIEW!=='table');
     if(SUB_VIEW==='bar') renderSubBar(entries);
-    else if(SUB_VIEW==='grouped') renderSubGrouped(entries);
+    else if(SUB_VIEW==='grouped') renderSubGrouped(entries, subStageMap);
     else renderSubTable(entries);
   }
 
@@ -1908,8 +1939,10 @@
     });
   }
 
-  // 중분류별 소그룹: A-1~A-6 등 중분류마다 작은 막대 카드를 따로 둬서 한 그룹이 길어져도 전체가 안 흐트러지게
-  function renderSubGrouped(entries){
+  // 중분류별 소그룹: A-1~A-6 등 중분류마다 작은 막대 카드를 따로 둬서 한 그룹이 길어져도 전체가 안 흐트러지게.
+  // 검증(verify) 중분류는 소분류 막대를 작업단계(검증 수행/Fail 분석/이슈리포트 작성)별로 누적해서
+  // 소분류 안에서 어디에 시간이 더 들었는지 한 번에 보이게 한다. 단계가 없는 환경설정/PM업무는 단일 막대 그대로.
+  function renderSubGrouped(entries, subStageMap){
     SUB_GROUP_CHART_KEYS.forEach(function(k){ destroyChart(k); });
     SUB_GROUP_CHART_KEYS = [];
     var byMid = {};
@@ -1917,10 +1950,15 @@
     var mids = allMidsOrdered().filter(function(m){ return byMid[m] && byMid[m].length; });
     Object.keys(byMid).forEach(function(m){ if(mids.indexOf(m)===-1) mids.push(m); }); // 카테고리 트리에 없는 과거 mid도 누락 없이 표시
 
+    var anyVerify = mids.some(function(m){ var info = midInfo(m); return info && info.group==='verify'; });
+    document.getElementById('subGroupedLegend').classList.toggle('hidden', !anyVerify);
+
     var grid = document.getElementById('subViewGrouped');
     grid.innerHTML = '';
     mids.forEach(function(mid, i){
       var list = byMid[mid];
+      var info = midInfo(mid);
+      var isVerify = info && info.group==='verify';
       var card = document.createElement('div');
       card.className = 'sub-group-card';
       var canvasId = 'chartSubGroup_'+i;
@@ -1928,11 +1966,27 @@
       grid.appendChild(card);
       var key = 'subgroup_'+i;
       SUB_GROUP_CHART_KEYS.push(key);
+      var labels = list.map(function(e){return e.sub+' ('+(Math.round(e.sum*10)/10)+'분)';});
+      var datasets;
+      if(isVerify){
+        datasets = STAGES.map(function(stage){
+          return barSpec({
+            label: stage,
+            data: list.map(function(e){ var st = subStageMap[e.key]; return st && st[stage] ? Math.round(st[stage]*10)/10 : 0; }),
+            backgroundColor: STAGE_COLOR[stage]
+          });
+        });
+      } else {
+        datasets = [barSpec({ data:list.map(function(e){return Math.round(e.sum*10)/10;}), backgroundColor:midColor(mid) })];
+      }
       charts[key] = new Chart(document.getElementById(canvasId), {
         type:'bar',
-        data:{ labels:list.map(function(e){return e.sub+' ('+(Math.round(e.sum*10)/10)+'분)';}),
-               datasets:[barSpec({ data:list.map(function(e){return Math.round(e.sum*10)/10;}), backgroundColor:midColor(mid) })] },
-        options: baseChartOptions({ indexAxis:'y', plugins:{legend:{display:false}} })
+        data:{ labels:labels, datasets:datasets },
+        options: baseChartOptions(isVerify ? {
+          indexAxis:'y', plugins:{legend:{display:false}},
+          scales:{ x:{ stacked:true, ticks:{color:CHART_INK_MUTED,font:{size:10.5}}, grid:{color:CHART_GRID}, border:{display:false} },
+                   y:{ stacked:true, ticks:{color:CHART_INK_MUTED,font:{size:10.5}}, grid:{display:false}, border:{color:CHART_GRID} } }
+        } : { indexAxis:'y', plugins:{legend:{display:false}} })
       });
     });
   }
@@ -1969,7 +2023,7 @@
       if(!btn) return;
       SUB_VIEW = btn.dataset.view;
       document.querySelectorAll('.sub-view-tab-btn').forEach(function(b){ b.classList.toggle('active', b===btn); });
-      if(LAST_SUB_MAP) renderSubSection(LAST_SUB_MAP);
+      if(LAST_SUB_MAP) renderSubSection(LAST_SUB_MAP, LAST_SUB_STAGE_MAP);
     });
     document.getElementById('subSumTable').querySelector('thead').addEventListener('click', function(e){
       var th = e.target.closest('th[data-sort]');
@@ -2057,7 +2111,7 @@
       if(!subMap[key]) subMap[key]={sum:0,count:0};
       subMap[key].sum += l.minutes; subMap[key].count += 1;
     });
-    renderSubSection(subMap);
+    renderSubSection(subMap, buildSubStageMap(rows));
 
     // 중분류(검증 수행 그룹)별 평균
     var verifyMidList = verifyMids();
