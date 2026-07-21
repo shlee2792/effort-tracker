@@ -225,6 +225,15 @@
   .list-row{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
   .list-row input{flex:1;}
 
+  /* 업무 분류 관리 — 중분류 블록 + 중첩된 소분류 목록 */
+  .cat-block{border:1px solid var(--line);border-radius:var(--r-md);padding:12px;margin-bottom:10px;background:var(--panel-alt);}
+  .cat-block-head{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
+  .cat-block-head input{flex:2;}
+  .cat-block-head select{flex:1;}
+  .cat-subs{margin-left:4px;padding-left:12px;border-left:2px solid var(--line);}
+  .cat-sub-row{display:flex;gap:8px;align-items:center;margin-bottom:6px;}
+  .cat-sub-row input{flex:1;}
+
   /* Modal — ex-modal-card: feature-card 크롬 + Level 2(elevated) 그림자 */
   .modal-overlay{
     position:fixed;inset:0;background:rgba(0,0,0,0.25);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:none;
@@ -515,9 +524,12 @@
     </div>
 
     <div class="card">
-      <h2>업무 분류 체계 (참고용)</h2>
-      <p class="card-sub">현재 버전에서는 고정 항목입니다. 검증 수행 그룹(A-1~A-6)은 소분류 선택 후 작업 단계(검증 수행/Fail 분석/이슈리포트 작성/산출물 정리)를 추가로 선택합니다.</p>
-      <div id="categoryRef"></div>
+      <h2>업무 분류 관리</h2>
+      <p class="card-sub">중분류·소분류를 추가/수정/삭제할 수 있습니다. "검증 수행" 구분인 중분류는 공수 입력 시 작업 단계(검증 수행/Fail 분석/이슈리포트 작성) 선택이 추가로 따라붙습니다.</p>
+      <div id="categoryManageList"></div>
+      <button class="btn btn-secondary btn-sm" id="addCategoryBtn">+ 중분류 추가</button>
+      <hr class="section-divider"/>
+      <button class="btn btn-primary btn-block" id="saveCategoriesBtn">분류 체계 저장</button>
     </div>
 
     <div class="card">
@@ -694,7 +706,8 @@
   function barSpec(extra){
     return Object.assign({ borderRadius:5, borderSkipped:false, barPercentage:0.55, categoryPercentage:0.7, borderWidth:0 }, extra||{});
   }
-  var VERIFY_MIDS = CATEGORY_TREE.filter(function(c){return c.group==='verify';}).map(function(c){return c.mid;});
+  // CATEGORY_TREE가 서버에서 로드/편집되어 바뀔 수 있으므로 매번 다시 계산
+  function verifyMids(){ return CATEGORY_TREE.filter(function(c){return c.group==='verify';}).map(function(c){return c.mid;}); }
   var STAGES = ["검증 수행","Fail 분석","이슈리포트 작성"];
   var NORMAL_STAGES = ["검증 수행"];
   var ISSUE_STAGES = ["Fail 분석","이슈리포트 작성"];
@@ -845,18 +858,20 @@
   /* ---------------- init ---------------- */
   async function init(){
     setSyncing(true);
-    var [m, v, l, t, pin] = await Promise.all([
+    var [m, v, l, t, pin, cat] = await Promise.all([
       sGet('meta-members', MEMBERS),
       sGet('meta-vehicles', VEHICLES),
       sGet('work-logs', []),
       sGet('active-timers', []),
-      sGet('meta-admin-pin', ADMIN_PIN)
+      sGet('meta-admin-pin', ADMIN_PIN),
+      sGet('meta-categories', CATEGORY_TREE)
     ]);
     MEMBERS = (m && m.length) ? m : MEMBERS;
     VEHICLES = (v && v.length) ? v : VEHICLES;
     LOGS = l || [];
     TIMERS = t || [];
     ADMIN_PIN = pin || ADMIN_PIN;
+    CATEGORY_TREE = (cat && cat.length) ? cat : CATEGORY_TREE;
     setSyncing(false);
 
     document.getElementById('ctxMonth').value = currentMonthStr();
@@ -873,7 +888,7 @@
     refreshMemberSelects();
     refreshVehicleSelects();
     refreshMidSelects();
-    renderCategoryRef();
+    renderCategoryManageList();
     renderMemberSettingsList();
     renderVehicleSettingsList();
 
@@ -1619,9 +1634,10 @@
       options: baseChartOptions({ indexAxis:'y', plugins:{legend:{display:false}} })
     });
 
-    // 중분류(A-1~A-6)별 평균 (verify only)
+    // 중분류(검증 수행 그룹)별 평균
+    var verifyMidList = verifyMids();
     var midMap = {};
-    VERIFY_MIDS.forEach(function(mv){ midMap[mv]={sum:0,count:0}; });
+    verifyMidList.forEach(function(mv){ midMap[mv]={sum:0,count:0}; });
     rows.filter(function(l){return l.group==='verify';}).forEach(function(l){
       if(!midMap[l.mid]) return;
       midMap[l.mid].sum += l.minutes; midMap[l.mid].count += 1;
@@ -1629,7 +1645,7 @@
     destroyChart('midVerify');
     charts.midVerify = new Chart(document.getElementById('chartByMidVerify'), {
       type:'bar',
-      data:{ labels:VERIFY_MIDS, datasets:[barSpec({ label:'평균 분', data:VERIFY_MIDS.map(function(mv){ var x=midMap[mv]; return x.count? Math.round(x.sum/x.count):0; }), backgroundColor:CHART_CAT[2] })] },
+      data:{ labels:verifyMidList, datasets:[barSpec({ label:'평균 분', data:verifyMidList.map(function(mv){ var x=midMap[mv]; return x.count? Math.round(x.sum/x.count):0; }), backgroundColor:CHART_CAT[2] })] },
       options: baseChartOptions({ plugins:{legend:{display:false}} })
     });
 
@@ -1701,6 +1717,23 @@
       refreshFilterOptions();
       renderDashboard();
       alert('차종 목록이 저장되었습니다.');
+    });
+    document.getElementById('addCategoryBtn').addEventListener('click', function(){
+      syncCategoryTreeFromInputs();
+      CATEGORY_TREE.push({ mid: '새 중분류'+(CATEGORY_TREE.length+1), group: 'env', subs: ['새 소분류1'] });
+      renderCategoryManageList();
+    });
+    document.getElementById('saveCategoriesBtn').addEventListener('click', async function(){
+      syncCategoryTreeFromInputs();
+      var names = CATEGORY_TREE.map(function(c){return c.mid;});
+      var dup = names.some(function(n,i){return names.indexOf(n)!==i;});
+      if(dup){ alert('중분류 이름이 중복됩니다. 이름을 확인해주세요.'); return; }
+      setSyncing(true);
+      await sSet('meta-categories', CATEGORY_TREE);
+      setSyncing(false);
+      renderCategoryManageList();
+      refreshMidSelects();
+      alert('분류 체계가 저장되었습니다.');
     });
     document.getElementById('resetDataBtn').addEventListener('click', function(){
       showConfirm('전체 기록 삭제', '모든 담당자의 기록과 실행 중인 타이머가 삭제됩니다. 계속할까요?', async function(){
@@ -1799,17 +1832,74 @@
     });
   }
 
-  function renderCategoryRef(){
-    var wrap = document.getElementById('categoryRef');
-    var html = '<div class="table-wrap" style="max-height:280px;"><table><thead><tr><th>중분류</th><th>구분</th><th>소분류</th></tr></thead><tbody>';
-    CATEGORY_TREE.forEach(function(c){
-      var tag = c.group==='verify' ? '<span class="tag tag-verify">검증수행</span>'
-              : c.group==='pm' ? '<span class="tag tag-pm">PM업무</span>'
-              : '<span class="tag tag-env">환경설정</span>';
-      html += '<tr><td>'+c.mid+'</td><td>'+tag+'</td><td>'+c.subs.join(', ')+'</td></tr>';
+  function renderCategoryManageList(){
+    var wrap = document.getElementById('categoryManageList');
+    wrap.innerHTML = '';
+    CATEGORY_TREE.forEach(function(c, idx){
+      var block = document.createElement('div');
+      block.className = 'cat-block';
+      block.dataset.idx = idx;
+
+      var head = document.createElement('div');
+      head.className = 'cat-block-head';
+      head.innerHTML =
+        '<input type="text" class="cat-mid-input" value="'+escapeHtml(c.mid)+'" placeholder="중분류 이름" />'+
+        '<select class="cat-group-select">'+
+          '<option value="env"'+(c.group==='env'?' selected':'')+'>환경설정</option>'+
+          '<option value="verify"'+(c.group==='verify'?' selected':'')+'>검증수행</option>'+
+          '<option value="pm"'+(c.group==='pm'?' selected':'')+'>PM업무</option>'+
+        '</select>'+
+        '<button class="del-x" title="중분류 삭제">✕</button>';
+      head.querySelector('.del-x').addEventListener('click', function(){
+        if(CATEGORY_TREE.length<=1){ alert('중분류는 1개 이상이어야 합니다.'); return; }
+        CATEGORY_TREE.splice(idx,1);
+        renderCategoryManageList();
+      });
+      block.appendChild(head);
+
+      var subsWrap = document.createElement('div');
+      subsWrap.className = 'cat-subs';
+      c.subs.forEach(function(sub, subIdx){
+        var row = document.createElement('div');
+        row.className = 'cat-sub-row';
+        row.innerHTML =
+          '<input type="text" class="cat-sub-input" value="'+escapeHtml(sub)+'" placeholder="소분류 이름" />'+
+          '<button class="del-x" title="소분류 삭제">✕</button>';
+        row.querySelector('.del-x').addEventListener('click', function(){
+          if(c.subs.length<=1){ alert('소분류는 1개 이상이어야 합니다.'); return; }
+          c.subs.splice(subIdx,1);
+          renderCategoryManageList();
+        });
+        subsWrap.appendChild(row);
+      });
+      block.appendChild(subsWrap);
+
+      var addSubBtn = document.createElement('button');
+      addSubBtn.className = 'btn btn-secondary btn-sm';
+      addSubBtn.textContent = '+ 소분류 추가';
+      addSubBtn.style.marginLeft = '4px';
+      addSubBtn.addEventListener('click', function(){
+        c.subs.push('새 소분류'+(c.subs.length+1));
+        renderCategoryManageList();
+      });
+      block.appendChild(addSubBtn);
+
+      wrap.appendChild(block);
     });
-    html += '</tbody></table></div>';
-    wrap.innerHTML = html;
+  }
+
+  /** 저장 직전, 화면에 입력된 값(자유 편집분)을 CATEGORY_TREE에 반영 */
+  function syncCategoryTreeFromInputs(){
+    var blocks = document.querySelectorAll('#categoryManageList .cat-block');
+    blocks.forEach(function(block, idx){
+      var c = CATEGORY_TREE[idx];
+      if(!c) return;
+      c.mid = block.querySelector('.cat-mid-input').value.trim() || c.mid;
+      c.group = block.querySelector('.cat-group-select').value;
+      var subInputs = block.querySelectorAll('.cat-sub-input');
+      var subs = Array.from(subInputs).map(function(i){return i.value.trim();}).filter(Boolean);
+      c.subs = subs.length ? subs : c.subs;
+    });
   }
 
   /* ---------------- modals ---------------- */
