@@ -672,6 +672,7 @@
           <select id="relType">
             <option value="공식펌웨어">공식펌웨어</option>
             <option value="정기펌웨어">정기펌웨어</option>
+            <option value="변경점 검증">변경점 검증</option>
           </select>
         </div>
       </div>
@@ -856,6 +857,9 @@
   /* ---------------- 상태 ---------------- */
   var MEMBERS = ["정현철","고유빈","장서진","황승현","윤현우"];
   var VEHICLES = ["JG","MX5a","차종3"];
+  // 변경점 검증은 일반 차종(JG/MX5a 등) 대신 EV/EREV 두 파워트레인 구분으로 등록한다 — 설정 탭 차종 목록과는 별개
+  var CHANGE_POINT_TYPE = '변경점 검증';
+  var CHANGE_POINT_VEHICLES = ['EV','EREV'];
   var LOGS = [];     // {id, member, month, vehicle, mid, sub, group, stage, minutes, date, note, source}
   var TIMERS = [];   // {id, member, month, vehicle, mid, sub, group, stage, startTs, accumMs, status}
   var RELEASES = []; // {id, name, month, type, seq, label, vehicles, applicableMids, createdAt, createdBy}
@@ -1205,7 +1209,7 @@
   function refreshFilterOptions(){
     var months = uniqueSorted(LOGS.map(function(l){return l.month;}));
     var memberOpts = ['all'].concat(MEMBERS);
-    var vehicleOpts = ['all'].concat(VEHICLES);
+    var vehicleOpts = ['all'].concat(knownVehicles());
     var monthOpts = ['all'].concat(months);
 
     [['logFilterMember',memberOpts],['dashFilterMember',memberOpts],
@@ -1248,6 +1252,16 @@
   function uniqueSorted(arr){
     var s = {}; arr.forEach(function(a){ if(a) s[a]=true; });
     return Object.keys(s).sort();
+  }
+
+  /** 필터·대시보드용 전체 차종 목록 — 설정 탭 VEHICLES(JG/MX5a 등) + 실제 로그/배포 건에 등장하는
+   *  그 외 차종(예: 변경점 검증의 EV/EREV)을 합친다. VEHICLES 순서를 앞에 두고 나머지는 뒤에 정렬해 붙인다. */
+  function knownVehicles(){
+    var extra = {};
+    LOGS.forEach(function(l){ if(l.vehicle) extra[l.vehicle] = true; });
+    RELEASES.forEach(function(r){ (r.vehicles||[]).forEach(function(v){ extra[v.name] = true; }); });
+    var extraArr = Object.keys(extra).filter(function(v){ return VEHICLES.indexOf(v)===-1; }).sort();
+    return VEHICLES.concat(extraArr);
   }
 
   /* ---------------- record tab bindings ---------------- */
@@ -2180,9 +2194,10 @@
       options: baseChartOptions({ plugins:{ legend:{display:false} } })
     });
 
-    // 차종별 총공수 — 차종=x축(항목), 배포 유형(공식/정기펌웨어)별로 누적. 세그먼트 사이 2px 서피스 갭
-    var TYPE_ORDER_V = ['공식펌웨어','정기펌웨어'];
-    var TYPE_COLOR_V = { '공식펌웨어': CHART_CAT[0], '정기펌웨어': CHART_CAT[5] };
+    // 차종별 총공수 — 차종=x축(항목), 배포 유형(공식/정기펌웨어/변경점 검증)별로 누적. 세그먼트 사이 2px 서피스 갭
+    var TYPE_ORDER_V = ['공식펌웨어','정기펌웨어','변경점 검증'];
+    var TYPE_COLOR_V = { '공식펌웨어': CHART_CAT[0], '정기펌웨어': CHART_CAT[5], '변경점 검증': CHART_CAT[2] };
+    var vehicleLabels = knownVehicles(); // JG/MX5a 등 + 변경점 검증의 EV/EREV
     var typesPresent = uniqueSorted(rows.map(releaseTypeOf)).sort(function(a,b){
       var ia = TYPE_ORDER_V.indexOf(a); if(ia===-1) ia = 99;
       var ib = TYPE_ORDER_V.indexOf(b); if(ib===-1) ib = 99;
@@ -2191,10 +2206,10 @@
     destroyChart('vehicle');
     charts.vehicle = new Chart(document.getElementById('chartByVehicle'), {
       type:'bar',
-      data:{ labels:VEHICLES, datasets: typesPresent.map(function(t){
+      data:{ labels:vehicleLabels, datasets: typesPresent.map(function(t){
         return barSpec({
           label: t,
-          data: VEHICLES.map(function(v){
+          data: vehicleLabels.map(function(v){
             return Math.round(rows.filter(function(l){return l.vehicle===v && releaseTypeOf(l)===t;})
               .reduce(function(s,l){return s+l.minutes;},0)/6)/10;
           }),
@@ -2251,7 +2266,7 @@
     // 월별 추이 (차종별)
     var months = uniqueSorted(rows.map(function(l){return l.month;}));
     var monthlyByVehicle = {};
-    VEHICLES.forEach(function(v){ monthlyByVehicle[v] = months.map(function(){return 0;}); });
+    vehicleLabels.forEach(function(v){ monthlyByVehicle[v] = months.map(function(){return 0;}); });
     rows.forEach(function(l){
       var idx = months.indexOf(l.month);
       if(idx>-1 && monthlyByVehicle[l.vehicle]) monthlyByVehicle[l.vehicle][idx] += l.minutes;
@@ -2259,7 +2274,7 @@
     destroyChart('monthly');
     charts.monthly = new Chart(document.getElementById('chartMonthly'), {
       type:'line',
-      data:{ labels:months, datasets: VEHICLES.map(function(v,i){
+      data:{ labels:months, datasets: vehicleLabels.map(function(v,i){
         var c = CHART_CAT[i%CHART_CAT.length];
         return { label:v, data:monthlyByVehicle[v].map(function(m){return Math.round(m/6)/10;}), borderColor:c, backgroundColor:c, borderWidth:2, pointRadius:3, pointHoverRadius:5, tension:0.25, fill:false };
       })},
@@ -2536,6 +2551,8 @@
     document.getElementById('relMonth').value = currentMonthStr();
     document.getElementById('registerReleaseBtn').addEventListener('click', submitReleaseForm);
     document.getElementById('releaseFormCancelBtn').addEventListener('click', closeReleaseEditForm);
+    // 유형(공식/정기/변경점 검증)을 바꾸면 차종 체크박스 목록이 그에 맞게 바뀐다(신규 등록 모드에서만 — 수정 모드는 유형 select가 비활성)
+    document.getElementById('relType').addEventListener('change', renderReleaseFormChecks);
   }
 
   function updateSubsToggleLabel(subsWrap){
@@ -2659,9 +2676,15 @@
     });
   }
 
+  /** 유형이 '변경점 검증'이면 EV/EREV 목록을, 그 외엔 설정 탭의 일반 차종 목록을 쓴다 */
+  function vehicleOptionsForType(type){
+    return type === CHANGE_POINT_TYPE ? CHANGE_POINT_VEHICLES : VEHICLES;
+  }
+
   function renderReleaseFormChecks(){
     var vWrap = document.getElementById('relVehicleChecks');
-    vWrap.innerHTML = VEHICLES.map(function(v){
+    var vOptions = vehicleOptionsForType(document.getElementById('relType').value);
+    vWrap.innerHTML = vOptions.map(function(v){
       return '<label style="display:inline-flex;align-items:center;gap:5px;margin:0 14px 8px 0;font-weight:500;font-size:13.5px;">'+
         '<input type="checkbox" class="rel-vehicle-check" value="'+escapeHtml(v)+'" /> '+escapeHtml(v)+'</label>';
     }).join('') || '<p class="hint" style="margin:0;">설정 탭에서 차종을 먼저 등록해주세요.</p>';
@@ -2811,7 +2834,12 @@
   }
 
   function deleteRelease(id){
-    showConfirm('배포 건 삭제', '이 배포 건을 삭제할까요? 되돌릴 수 없습니다.', async function(){
+    // 이 배포 건을 참조하는 로그가 있으면 삭제 후 '삭제된 배포 건'으로 붕 뜨게 되므로 미리 건수를 알려준다
+    var refCount = LOGS.filter(function(l){ return l.releaseId===id; }).length;
+    var desc = refCount>0
+      ? '이 배포 건을 참조하는 로그가 '+refCount+'건 있습니다. 삭제하면 이 로그들은 "삭제된 배포 건"으로 표시되고, 로그 탭에서 직접 다른 배포 건으로 재배정해야 합니다. 그래도 삭제할까요?'
+      : '이 배포 건을 삭제할까요? 되돌릴 수 없습니다.';
+    showConfirm('배포 건 삭제', desc, async function(){
       setSyncing(true);
       RELEASES = RELEASES.filter(function(r){return r.id!==id;});
       await sSet('meta-releases', RELEASES);
