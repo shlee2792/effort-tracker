@@ -219,6 +219,8 @@
   .weekly-table tr.row-sum td{background:var(--bg);font-weight:700;border-bottom:2px solid var(--line);}
   .weekly-table tr.row-grand td{background:var(--accent-soft);color:var(--accent-dark);font-weight:700;}
   .weekly-table tr:hover td.member{background:var(--panel);}
+  .weekly-table td.wk-manual{background:#FFF8E1;}
+  .wk-manual-key{background:#FFF2CC;padding:1px 6px;border-radius:4px;}
   .del-x{background:transparent;border:none;color:var(--ink-faint);cursor:pointer;font-size:14px;padding:2px 6px;border-radius:8px;}
   .del-x:hover{background:var(--danger-soft);color:var(--danger);}
   .edit-x{background:transparent;border:none;color:var(--ink-faint);cursor:pointer;font-size:13px;padding:2px 6px;border-radius:8px;}
@@ -452,10 +454,11 @@
     <div class="card">
       <h2>주간 공수 집계</h2>
       <p class="card-sub">
-        정기/공식 펌웨어 배포 건 기록을 담당자 · 주차별 시간(h)으로 합산합니다. 주차는 각 월의 달력 주(일~토)이며 작업 날짜 기준입니다.<br/>
-        <b>실무시간외 검증</b> = 확인이 '수정됨'이고 비고에 야간 · 야건 · 오버나잇 · 밤샘 · 점심시간이 들어간 기록, <b>정기/공식</b> = 그 외 기록.
-        배포 건이 미지정이거나 삭제된 기록은 제외됩니다.
+        담당자 · 주차별 공수(시간)입니다. 주차는 각 월의 달력 주(일~토)이며 작업 날짜 기준입니다.<br/>
+        <b>정기/공식</b> · <b>실무시간외 검증</b>은 정기/공식 펌웨어 배포 건 기록에서 자동 계산
+        (실무시간외 = 확인 '수정됨' + 비고에 야간 · 야건 · 오버나잇 · 밤샘 · 점심시간), 변경점 · POC · 고객대응 · 기타는 구글 시트에서 직접 입력한 값입니다.
       </p>
+      <p class="hint" id="weeklySource" style="margin:-6px 0 12px;"></p>
       <div class="filters">
         <div class="field" style="max-width:200px;">
           <label>월</label>
@@ -1121,7 +1124,7 @@
         document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
         applyLockState();
         if(btn.dataset.tab==='dash') renderDashboard();
-        if(btn.dataset.tab==='weekly') renderWeekly();
+        if(btn.dataset.tab==='weekly') openWeekly();
         if(btn.dataset.tab==='log' && isAdminUnlocked) renderLogTable();
         if(btn.dataset.tab==='release' && (isAdminUnlocked||isReleaseUnlocked)) renderReleaseTable();
       });
@@ -1346,18 +1349,55 @@
     return weeks;
   }
 
+  // 구글 시트 '공수 집계' 탭 값 (서버 get-summary). null=아직 안 불러옴, false=서버 미지원/실패
+  var WEEKLY_SHEET = null;
+  var WEEKLY_LOADING = false;
+
+  async function loadWeeklySheet(){
+    WEEKLY_LOADING = true;
+    try{
+      var res = await fetch(API_URL + '?action=get-summary');
+      var data = await res.json();
+      if(data && data.ok){
+        var now = new Date();
+        var p2 = function(n){ return (n<10?'0':'')+n; };
+        data.fetchedAt = (now.getMonth()+1)+'/'+now.getDate()+' '+p2(now.getHours())+':'+p2(now.getMinutes());
+      }
+      WEEKLY_SHEET = (data && data.ok) ? data : false;
+    }catch(e){
+      console.error('get-summary failed', e);
+      WEEKLY_SHEET = false;
+    } finally {
+      WEEKLY_LOADING = false;
+    }
+  }
+
+  /** 탭을 열 때마다 시트 값을 새로 불러온 뒤 그린다 (불러오는 동안은 직전 값/기록 계산으로 표시) */
+  async function openWeekly(){
+    renderWeekly();
+    if(WEEKLY_LOADING) return;
+    await loadWeeklySheet();
+    renderWeekly();
+  }
+
   function renderWeekly(){
+    var sheet = WEEKLY_SHEET || null;
     var sel = document.getElementById('weeklyMonth');
     var months = [];
-    LOGS.forEach(function(l){
-      var ym = String(l.date||'').slice(0,7);
-      if(/^\d{4}-\d{2}$/.test(ym) && months.indexOf(ym)===-1) months.push(ym);
-    });
+    if(sheet){
+      sheet.months.forEach(function(m){ months.push(m.ym); });
+    } else {
+      LOGS.forEach(function(l){
+        var ym = String(l.date||'').slice(0,7);
+        if(/^\d{4}-\d{2}$/.test(ym) && months.indexOf(ym)===-1) months.push(ym);
+      });
+    }
     months.sort().reverse();
     var hadValue = !!sel.value;
     fillSelect(sel, months, true);
-    if(!hadValue && months.length) sel.value = months[0];
+    if((!hadValue || months.indexOf(sel.value)===-1) && months.length) sel.value = months[0];
 
+    var src = document.getElementById('weeklySource');
     var head = document.getElementById('weeklyHead');
     var body = document.getElementById('weeklyBody');
     var ym = sel.value;
@@ -1367,53 +1407,98 @@
       return;
     }
 
+    var table = sheet ? weeklyFromSheet(sheet, ym) : weeklyFromLogs(ym);
+    src.innerHTML = sheet
+      ? '구글 시트 <b>공수 집계</b> 탭 기준 · 불러온 시각 '+escapeHtml(sheet.fetchedAt||'')+' · <span class="wk-manual-key">노란 칸</span>은 시트에서 직접 입력한 값'
+      : (WEEKLY_LOADING ? '구글 시트 값을 불러오는 중… (그동안 사이트 기록으로 계산한 값 표시)'
+                        : '사이트 기록으로 계산한 값 (정기/공식 · 실무시간외 검증만). 시트 연결이 안 되어 직접 입력 항목은 표시되지 않습니다.');
+    drawWeeklyTable(table, head, body);
+  }
+
+  /** 시트 값 → 표 데이터 (시간 단위) */
+  function weeklyFromSheet(sheet, ym){
+    var mi = -1;
+    sheet.months.forEach(function(m,i){ if(m.ym===ym) mi=i; });
+    var month = sheet.months[mi];
+    var pick = function(block){ var b = block[ym] || {weeks:[], total:0}; return { weeks: b.weeks, total: b.total }; };
+    return {
+      weekLabels: month.weeks,
+      members: sheet.members.map(function(mem){
+        return {
+          name: mem.name,
+          rows: sheet.cats.map(function(cat, ci){
+            var v = pick(mem.rows[ci]);
+            return { cat: cat, weeks: v.weeks, total: v.total, manual: sheet.autoCats.indexOf(cat)===-1 };
+          }),
+          sum: pick(mem.sum)
+        };
+      }),
+      grand: pick(sheet.grand)
+    };
+  }
+
+  /** 사이트 기록으로 직접 계산 (서버가 get-summary를 지원하지 않을 때의 대체 경로) */
+  function weeklyFromLogs(ym){
     var weeks = weeksOfMonth(ym);
     var cats = ['정기/공식','실무시간외 검증'];
-    // sums[member][catIndex][weekIndex] (분)
+    var zero = function(){ return weeks.map(function(){ return 0; }); };
     var sums = {};
-    MEMBERS.forEach(function(name){ sums[name] = cats.map(function(){ return weeks.map(function(){ return 0; }); }); });
+    MEMBERS.forEach(function(name){ sums[name] = cats.map(zero); });
     LOGS.forEach(function(l){
       if(!l || String(l.date||'').slice(0,7)!==ym) return;
       if(WEEKLY_RELEASE_TYPES.indexOf(releaseTypeOf(l))===-1) return;
       var wi = -1;
       for(var i=0;i<weeks.length;i++){ if(l.date>=weeks[i].from && l.date<=weeks[i].to){ wi=i; break; } }
       if(wi===-1) return;
-      if(!sums[l.member]) sums[l.member] = cats.map(function(){ return weeks.map(function(){ return 0; }); });
+      if(!sums[l.member]) sums[l.member] = cats.map(zero);
       sums[l.member][isOffHoursLog(l)?1:0][wi] += (l.minutes||0);
     });
+    var h = function(min){ return Math.round(min/60*100)/100; };
+    var sumArr = function(a){ return a.reduce(function(s,v){ return s+v; },0); };
+    var add = function(a,b){ return a.map(function(v,i){ return v+b[i]; }); };
+    var grand = zero();
     // 그 달에 정기/공식 기록이 하나도 없는 담당자는 표에서 뺀다
     var members = Object.keys(sums).filter(function(name){
       return sums[name].some(function(arr){ return arr.some(function(v){ return v>0; }); });
     }).sort(function(a,b){
       var ia = MEMBERS.indexOf(a), ib = MEMBERS.indexOf(b);
       return (ia===-1?999:ia) - (ib===-1?999:ib);
-    });
-
-    var fmt = function(min){ return min>0 ? (Math.round(min/60*100)/100).toFixed(2) : '-'; };
-    var add = function(a,b){ return a.map(function(v,i){ return v+b[i]; }); };
-    var total = function(arr){ return arr.reduce(function(s,v){ return s+v; },0); };
-    var cells = function(arr){
-      return arr.map(function(v){ return '<td class="num">'+fmt(v)+'</td>'; }).join('') +
-             '<td class="num col-total">'+fmt(total(arr))+'</td>';
-    };
-
-    head.innerHTML = '<tr><th>담당자</th><th>구분</th>' +
-      weeks.map(function(w,i){ return '<th>'+(i+1)+'W<span class="wk-range">'+w.label+'</span></th>'; }).join('') +
-      '<th class="col-total">합산</th></tr>';
-
-    var html = '';
-    var grand = weeks.map(function(){ return 0; });
-    members.forEach(function(name){
+    }).map(function(name){
       var rows = sums[name];
       var sum = rows.reduce(add);
       grand = add(grand, sum);
-      rows.forEach(function(arr, ci){
-        html += '<tr>' + (ci===0 ? '<td class="member" rowspan="'+(cats.length+1)+'">'+escapeHtml(name)+'</td>' : '') +
-                '<td>'+cats[ci]+'</td>' + cells(arr) + '</tr>';
-      });
-      html += '<tr class="row-sum"><td>합산</td>' + cells(sum) + '</tr>';
+      return {
+        name: name,
+        rows: rows.map(function(arr, ci){ return { cat: cats[ci], weeks: arr.map(h), total: h(sumArr(arr)), manual: false }; }),
+        sum: { weeks: sum.map(h), total: h(sumArr(sum)) }
+      };
     });
-    html += '<tr class="row-grand"><td colspan="2">총 합산</td>' + cells(grand) + '</tr>';
+    return {
+      weekLabels: weeks.map(function(w){ return w.label; }),
+      members: members,
+      grand: { weeks: grand.map(h), total: h(sumArr(grand)) }
+    };
+  }
+
+  function drawWeeklyTable(t, head, body){
+    var fmt = function(v){ v = Number(v)||0; return v ? v.toFixed(2) : '-'; };
+    var cells = function(weeks, total, extra){
+      var out = '';
+      for(var i=0;i<t.weekLabels.length;i++) out += '<td class="num'+(extra||'')+'">'+fmt(weeks[i])+'</td>';
+      return out + '<td class="num col-total">'+fmt(total)+'</td>';
+    };
+    head.innerHTML = '<tr><th>담당자</th><th>구분</th>' +
+      t.weekLabels.map(function(label,i){ return '<th>'+(i+1)+'W<span class="wk-range">'+escapeHtml(label)+'</span></th>'; }).join('') +
+      '<th class="col-total">합산</th></tr>';
+    var html = '';
+    t.members.forEach(function(mem){
+      mem.rows.forEach(function(r, ci){
+        html += '<tr>' + (ci===0 ? '<td class="member" rowspan="'+(mem.rows.length+1)+'">'+escapeHtml(mem.name)+'</td>' : '') +
+                '<td>'+escapeHtml(r.cat)+'</td>' + cells(r.weeks, r.total, r.manual ? ' wk-manual' : '') + '</tr>';
+      });
+      html += '<tr class="row-sum"><td>합산</td>' + cells(mem.sum.weeks, mem.sum.total) + '</tr>';
+    });
+    html += '<tr class="row-grand"><td colspan="2">총 합산</td>' + cells(t.grand.weeks, t.grand.total) + '</tr>';
     body.innerHTML = html;
   }
 

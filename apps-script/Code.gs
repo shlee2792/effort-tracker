@@ -42,6 +42,8 @@
  *       (예: "2026-07 정기펌웨어 2차 등록 (VCU 이슈 대응)"). LockService로 직렬화하므로
  *       PM/관리자가 동시에 등록해도 순번이 겹치지 않는다. meta-releases 배열에 append.
  *
+ *   ?action=get-summary                → Summary.gs가 만든 '공수 집계' 탭 값 (읽기 전용, 주간 집계 탭용)
+ *
  * 미러 시트 '공수로그':
  *   work-logs-db가 바뀔 때마다 로그를 "한 행 = 기록 1건" 표 형태로 자동 반영한다.
  *   Looker Studio 등 BI 도구 연결용이며 조회 전용 — 이 시트를 직접 수정해도
@@ -94,6 +96,9 @@ function doGet(e) {
       out = withLock_(function () {
         return migrateWorklogsToDb_(e.parameter.force === '1' || e.parameter.force === 'true');
       });
+    } else if (action === 'get-summary') {
+      // '공수 집계' 탭 값 조회 (Summary.gs, 읽기 전용) — 주간 집계 탭에서 사용
+      out = (typeof summaryJson_ === 'function') ? summaryJson_() : { ok: false, error: 'Summary.gs not installed' };
     } else if (action === 'register-release') {
       out = withLock_(function () {
         return registerRelease_(e.parameter.value);
